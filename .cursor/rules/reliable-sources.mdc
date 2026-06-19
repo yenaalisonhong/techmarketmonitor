@@ -1,0 +1,88 @@
+---
+description: Restrict research and citations to pre-approved, high-credibility sources only
+alwaysApply: true
+---
+
+# Reliable Sources Policy
+
+When performing research, citing facts, or linking to external content, **only use sources from the approved list below**. Do not cite blogs, Wikipedia, vendor marketing pages, or unverified news outlets.
+
+## Approved Sources
+
+### Academic & Scientific
+- **IEEE Xplore** (ieee.org) — engineering & electronics papers
+- **ACM Digital Library** — computing research
+- **arXiv.org** — preprints in CS, AI, physics
+- **Fraunhofer-Publica** — Fraunhofer research publications
+- **Springer / Elsevier / Wiley** — peer-reviewed journals
+- **Google Scholar** — for discovery only; always fetch and cite the primary source
+
+### Market Intelligence
+- **Gartner** — hype cycles, magic quadrants, forecasts
+- **IDC** (idc.com) — market sizing and vendor share
+- **Statista** — aggregated data with source citations
+- **McKinsey Global Institute** — free reports on tech trends
+- **OECD iLibrary** — policy and innovation data
+- **Eurostat** — EU tech statistics
+- **Destatis** — German Federal Statistics
+
+### Patent & IP Intelligence
+- **Espacenet** (EPO) — European patent database
+- **DPMA** — German Patent and Trade Mark Office
+- **Google Patents** — broad search across patent offices
+- **Patsnap / Derwent** — if institutional license is available
+
+### Government & Policy
+- **EU Commission** (ec.europa.eu)
+- **BMBF** — German Federal Ministry of Education and Research
+- **NIST** — US standards and tech reports
+- **IEA** — energy technology specifically
+
+### High-Credibility Tech News
+- **MIT Technology Review** — reliable tech journalism
+- **Nature News & Comment** — science-driven tech coverage
+- **Financial Times Tech** — market-focused reporting
+
+### Korea — Government & Policy
+- **KISTEP** (kistep.re.kr) — Korea Institute of S&T Evaluation and Planning; R&D budget, forecasting, TRL assessments
+- **IITP** (iitp.kr) — Institute for Information & Communications Technology Planning & Evaluation
+- **KOITA** (koita.or.kr) — Korea Industrial Technology Association; industry R&D stats
+- **MOTIE** (motie.go.kr) — Ministry of Trade, Industry and Energy; industrial policy
+- **MSIT** (msit.go.kr) — Ministry of Science and ICT; tech strategy documents
+- **KIPO** (kipo.go.kr) — Korean Intellectual Property Office; domestic patents
+- **KISDI** (kisdi.re.kr) — Korea Information Society Development Institute; ICT market data
+- **KOTRA** (kotra.or.kr) — Korea Trade-Investment Promotion Agency; market entry reports
+- **Statistics Korea / KOSTAT** (kostat.go.kr) — national statistics
+
+### Korea — Market & Industry Research
+- **KIET** (kiet.re.kr) — Korea Institute for Industrial Economics & Trade; industry analysis
+- **ETRI** (etri.re.kr) — Electronics and Telecommunications Research Institute; tech reports
+- **KDB Future Strategy Research Institute** (kdb.co.kr) — financial & tech sector reports
+
+### Asia-Pacific — Regional & Multi-country
+- **ADB** (adb.org) — Asian Development Bank; regional economic & tech development data
+- **APEC** (apec.org) — policy papers across 21 member economies
+- **Asia IoT Business Platform** — IoT and connectivity market data
+
+### Japan
+- **NEDO** (nedo.go.jp) — New Energy and Industrial Technology Development Organization
+- **JPO** (j-platpat.inpit.go.jp) — Japan Patent Office database
+- **METI** (meti.go.jp) — Ministry of Economy, Trade and Industry
+
+### China
+- **CNIPA** (cnipa.gov.cn) — China National Intellectual Property Administration
+- **CAICT** (caict.ac.cn) — China Academy of Information and Communications Technology
+- **MIIT** (miit.gov.cn) — Ministry of Industry and Information Technology
+
+### India
+- **NITI Aayog** (niti.gov.in) — national tech strategy
+- **DST** (dst.gov.in) — Department of Science & Technology
+
+### Singapore & Southeast Asia
+- **EDB Singapore** (edb.gov.sg) — investment & industry intelligence
+- **IMDA** (imda.gov.sg) — Infocomm Media Development Authority
+
+## Rules
+- Always cite the **primary source**, not a secondary report that references it.
+- If a source is behind a paywall, note that and provide the DOI or official URL.
+- If no approved source covers a topic, state that clearly rather than citing an unapproved one.
