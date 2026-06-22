@@ -33,13 +33,30 @@ class LLMSummarizer:
 
     # ── Public API ─────────────────────────────────────────────────────────────
 
-    def summarize_batch(self, items: list[dict]) -> list[dict]:
-        """Add an 'llm_summary' key to each item dict."""
+    def summarize_batch(
+        self,
+        items: list[dict],
+        url_cache: dict[str, str] | None = None,
+    ) -> list[dict]:
+        """Add an 'llm_summary' key to each item dict.
+
+        If *url_cache* is provided (a mapping of url → existing summary),
+        items whose URL is already cached skip the LLM call entirely.
+        """
+        cache = url_cache or {}
+        hits = 0
         results: list[dict] = []
         for item in items:
             item = item.copy()
-            item["llm_summary"] = self._summarize_item(item)
+            url = item.get("url", "")
+            if url and url in cache:
+                item["llm_summary"] = cache[url]
+                hits += 1
+            else:
+                item["llm_summary"] = self._summarize_item(item)
             results.append(item)
+        if hits:
+            logger.info(f"summarize_batch: {hits}/{len(items)} items served from cache (no LLM call).")
         return results
 
     def extract_trends(self, logs: list[dict]) -> str:

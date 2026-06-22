@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import sys
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 import click
 from apscheduler.schedulers.blocking import BlockingScheduler
@@ -34,7 +34,7 @@ def daily_cmd(run_date: datetime | None) -> None:
     settings = load_settings()
     _configure_logging(settings.log_level)
 
-    target_date = run_date.date() if run_date else date.today()
+    target_date = run_date.date() if run_date else date.today() - timedelta(days=1)
     result = run_daily_monitor(log_date=target_date, settings=settings)
     click.echo(json.dumps(result, indent=2))
 
@@ -44,17 +44,16 @@ def daily_cmd(run_date: datetime | None) -> None:
 @click.option("--month", type=int, default=None)
 @click.option(
     "--no-cleanup",
-    "cleanup_daily",
     is_flag=True,
-    default=True,
-    help="Skip deletion of daily markdown files after report generation.",
+    default=False,
+    help="Keep daily markdown files after report generation.",
 )
-def monthly_cmd(year: int | None, month: int | None, cleanup_daily: bool) -> None:
+def monthly_cmd(year: int | None, month: int | None, no_cleanup: bool) -> None:
     """Aggregate daily logs, generate a monthly Word report, and delete daily files."""
     settings = load_settings()
     _configure_logging(settings.log_level)
 
-    result = run_monthly_report(year=year, month=month, cleanup_daily=cleanup_daily)
+    result = run_monthly_report(year=year, month=month, cleanup_daily=not no_cleanup)
     click.echo(json.dumps(result, indent=2))
 
 

@@ -8,11 +8,12 @@ from pathlib import Path
 
 # ── Project root ─────────────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = BASE_DIR.parent
 
 # ── Storage paths ─────────────────────────────────────────────────────────────
 DATA_DIR = BASE_DIR / "storage" / "data"
 DAILY_LOGS_DIR = DATA_DIR / "daily_logs"
-REPORTS_DIR = DATA_DIR / "reports"
+REPORTS_DIR = PROJECT_ROOT / "output" / "monthly"
 DB_PATH = Path(os.getenv("DB_PATH", str(DAILY_LOGS_DIR / "monitor.db")))
 
 # Ensure directories exist at import time

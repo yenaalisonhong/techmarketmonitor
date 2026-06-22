@@ -57,6 +57,7 @@ def run_monthly_report(
 
     generator = ReportGenerator(settings)
     report_path = generator.generate_monthly_report(year, month, logs)
+    report_path_ko = generator.generate_monthly_report_ko(year, month, logs)
 
     deleted_files: list[str] = []
     if cleanup_daily:
@@ -70,5 +71,6 @@ def run_monthly_report(
         "month": month,
         "entries": len(logs),
         "report_path": str(report_path),
+        "report_path_ko": str(report_path_ko),
         "deleted_daily_reports": deleted_files,
     }

@@ -89,13 +89,30 @@ def run_daily_monitor(log_date: date | None = None, settings: Settings | None = 
             "stored": 0,
         }
 
+    # Deduplicate: skip articles whose URL was already processed on a previous run.
+    store = DailyLogStore(settings.database_path)
+    seen_urls = store.get_seen_urls()
+    new_articles = [a for a in filtered if a.url not in seen_urls]
+    skipped = len(filtered) - len(new_articles)
+    if skipped:
+        logger.info("Dedup filter: skipped %d already-seen article(s)", skipped)
+    filtered = new_articles
+
+    if not filtered:
+        logger.info("No new articles after dedup filter — skipping summarization")
+        return {
+            "log_date": log_date.isoformat(),
+            "fetched": len(raw_articles),
+            "filtered": 0,
+            "stored": 0,
+        }
+
     summarizer = Summarizer(settings)
     summarized = summarizer.summarize_batch(filtered)
 
-    store = DailyLogStore(settings.database_path)
     stored = store.save_entries(log_date, summarized)
 
-    report_path = save_daily_report(log_date, summarized)
+    report_path = save_daily_report(log_date, summarized, top_keywords=settings.keywords[:3])
 
     return {
         "log_date": log_date.isoformat(),

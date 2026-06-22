@@ -17,86 +17,19 @@ VPP
 grid modernization
 grid stability
 energy management system
-EMS
 BESS
 battery energy storage
 frequency regulation
 demand response
 
-# ── 에너지 전환 / 신재생 ─────────────────────────────────────────────────────
-renewable energy
-solar energy
-wind energy
-energy storage
-energy transition
-clean energy
-electrification
-EV charging
-electric vehicle
-offshore wind
-green hydrogen
-
-# ── 반도체 / AI 하드웨어 / HBM ───────────────────────────────────────────────
-semiconductor
-HBM
-high bandwidth memory
-AI chip
-GPU
-NPU
-TSMC
-Samsung foundry
-chiplet
-advanced packaging
-CoWoS
-DRAM
-NAND
-memory chip
-wafer
-logic chip
-chip design
-EDA
-power consumption chip
-thermal management
-3D stacking
-
-# ── AI / 머신러닝 ─────────────────────────────────────────────────────────────
-artificial intelligence
-machine learning
-large language model
-LLM
-generative AI
-foundation model
-transformer
-inference
-AI inference
-edge AI
-AI accelerator
-multimodal
-
-# ── 시장·투자·산업 동향 ───────────────────────────────────────────────────────
-market size
-CAGR
-market forecast
-market growth
-venture capital
-startup funding
-IPO
-M&A
-supply chain
+# ── 핵심 산업 인프라 동향 ──
 data center
-cloud computing
-hyperscaler
+supply chain
 AI infrastructure
-digital transformation
 
-# ── 사이버보안 ────────────────────────────────────────────────────────────────
-cybersecurity
-zero trust
-ransomware
-supply chain attack
+# ── 시장 규모 및 투자 동향 ──
+market size
+market forecast
+M&A
+startup funding
 
-# ── 신흥 기술 ────────────────────────────────────────────────────────────────
-quantum computing
-robotics
-autonomous vehicles
-space technology

@@ -111,6 +111,12 @@ class DailyLogStore:
             results.append(item)
         return results
 
+    def get_seen_urls(self) -> set[str]:
+        """Return all URLs that have already been stored (across all dates)."""
+        with self._connect() as conn:
+            rows = conn.execute("SELECT url FROM daily_logs").fetchall()
+        return {row["url"] for row in rows}
+
     def count_for_date(self, log_date: date) -> int:
         with self._connect() as conn:
             row = conn.execute(

@@ -37,3 +37,4 @@ class SummarizedArticle:
     key_trends: list[str]
     ko_summary_steps: list[str] = field(default_factory=list)
     en_summary_steps: list[str] = field(default_factory=list)
+    keyword_relevance: str = ""

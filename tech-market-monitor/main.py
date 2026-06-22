@@ -44,7 +44,12 @@ def run_daily_job() -> None:
     filtered = keyword_filter.filter(raw_items)
     logger.info(f"Filtered to {len(filtered)} relevant items")
 
-    summarized = summarizer.summarize_batch(filtered)
+    urls = [item.get("url", "") for item in filtered]
+    url_cache = daily_logger.get_cached_summaries(urls)
+    if url_cache:
+        logger.info(f"Cache hit: {len(url_cache)}/{len(filtered)} items already summarized — skipping LLM calls.")
+
+    summarized = summarizer.summarize_batch(filtered, url_cache=url_cache)
 
     daily_logger.save(summarized)
     logger.info("=== Daily job complete ===")

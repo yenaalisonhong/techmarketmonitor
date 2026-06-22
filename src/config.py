@@ -24,6 +24,7 @@ class Settings:
     openai_api_key: str
     openai_model: str
     openai_base_url: str | None
+    deepl_api_key: str
     database_path: Path
     reports_output_dir: Path
     log_level: str
@@ -62,7 +63,7 @@ def load_settings() -> Settings:
     if not database_path.is_absolute():
         database_path = PROJECT_ROOT / database_path
 
-    reports_output_dir = Path(os.getenv("REPORTS_OUTPUT_DIR", "reports"))
+    reports_output_dir = Path(os.getenv("REPORTS_OUTPUT_DIR", "output/monthly"))
     if not reports_output_dir.is_absolute():
         reports_output_dir = PROJECT_ROOT / reports_output_dir
 
@@ -70,6 +71,7 @@ def load_settings() -> Settings:
         openai_api_key=os.getenv("OPENAI_API_KEY", ""),
         openai_model=os.getenv("MODEL_NAME") or os.getenv("OPENAI_MODEL", "gemini-2.0-flash"),
         openai_base_url=os.getenv("OPENAI_BASE_URL") or None,
+        deepl_api_key=os.getenv("DEEPL_API_KEY", ""),
         database_path=database_path,
         reports_output_dir=reports_output_dir,
         log_level=os.getenv("LOG_LEVEL", "INFO"),

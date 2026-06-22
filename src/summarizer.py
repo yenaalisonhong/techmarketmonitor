@@ -18,36 +18,120 @@ logger = logging.getLogger(__name__)
 _REQUEST_DELAY = float(os.getenv("SUMMARIZER_REQUEST_DELAY", "1.0"))
 _MAX_RETRIES = 5
 
-SYSTEM_PROMPT = """You are a senior tech market intelligence analyst specializing in market sizing, competitive dynamics, and investment trends.
+# Post-processing fixes for common LLM calques (longer patterns first).
+_KOREAN_PHRASE_FIXES: list[tuple[str, str]] = [
+    (r"산업용\s*유연\s*부하\s*보유자", "산업용 수요조절이 가능한 시설·기업"),
+    (r"상업용\s*유연\s*부하\s*보유자", "상업용 수요조절이 가능한 시설·기업"),
+    (r"유연\s*부하\s*보유자", "수요조절 참여 기업·시설"),
+    (r"유연\s*수요", "수요조절(DR) 자원"),
+    (r"유연\s*용량", "조절 가능 용량"),
+    (r"유연\s*부하", "수요조절 가능 부하"),
+    (r"유연\s*자원", "수요·공급 조절 자원"),
+    (r"유연\s*전력", "조절 가능 전력"),
+]
 
-Your primary job is MARKET ANALYSIS, not just technology description. For every article you analyze:
+SYSTEM_PROMPT = """You are a senior tech market intelligence analyst writing for a general audience. Your goal is MARKET RESEARCH — not just technology description. Every analysis must be accurate, clearly written, and easy to understand for someone without a technical background. Avoid jargon; if a technical term is unavoidable, explain it in one plain-language phrase.
+
+For every article you analyze:
 - Extract any quantitative market data: market size (USD), CAGR forecasts, revenue figures, unit shipments, funding amounts.
 - Identify key players, competitive positioning, and market share signals.
 - Note supply-chain implications, M&A signals, or investment flows.
 - If the article is a research paper, translate the technical findings into their commercial/market implications.
+- Emphasize market potential, market impact, and real-world significance above all else.
 
-Write both an English and Korean 5-step structured summary.
+Write both an English and Korean structured summary using the section headings below. Do NOT include any numbered or step labels (no "Step 1", "1단계", etc.) — use only the bold heading shown.
 Every response MUST include the source URL in the English summary text.
 Return valid JSON with this exact schema:
 {
   "summary": "1-sentence English market-focused headline that ends with Source: <url>",
   "en_summary_steps": [
-    "Step 1 - Overview: <1-2 sentences: what market/industry segment does this address and why does it matter now?>",
-    "Step 2 - Key Content: <core findings, product announcements, or research results>",
-    "Step 3 - Technical Significance: <what is novel or differentiated from existing solutions?>",
-    "Step 4 - Market Impact & Sizing: <PRIORITIZE quantitative data — cite any TAM/SAM, CAGR, revenue projections, funding rounds, shipment numbers, market share figures. If none available, assess competitive and commercial implications for major players>",
-    "Step 5 - Investment & Future Outlook: <who stands to gain/lose, what trends to watch, what catalysts or risks could accelerate/slow adoption?>"
+    "**Overview:** <1-2 sentences: what market/industry segment does this address and why does it matter now? Write for a general reader.>",
+    "**What's the Development:** <core findings, product announcements, or research results — clearly explained without assumed technical knowledge>",
+    "**Why It Stands Out:** <what is novel or differentiated from existing solutions? Explain in plain language — avoid acronyms unless explained>",
+    "**Market Potential:** <PRIORITIZE quantitative data — cite any TAM/SAM, CAGR, revenue projections, funding rounds, shipment numbers, or market share figures. If none available, clearly assess competitive and commercial implications for major players>",
+    "**Investment Outlook:** <who stands to gain or lose, what trends to watch, what catalysts or risks could accelerate or slow adoption? Keep it accessible.>"
   ],
   "key_trends": ["market-oriented trend phrase 1", "market-oriented trend phrase 2"],
   "ko_summary_steps": [
-    "1단계 - 개요: <어떤 시장·산업 분야를 다루며 왜 지금 중요한지 1-2문장으로 소개>",
-    "2단계 - 핵심 내용: <주요 발표·연구 결과·제품 내용 요약>",
-    "3단계 - 기술적 차별성: <기존 솔루션 대비 혁신 포인트>",
-    "4단계 - 시장 규모 및 파급 효과: <시장 규모(TAM/SAM), CAGR, 매출·투자 수치 등 수치 데이터를 최우선으로 인용. 수치가 없으면 주요 플레이어(삼성·SK하이닉스·TSMC·NVIDIA 등)에 대한 사업적 함의를 구체적으로 분석>",
-    "5단계 - 투자·미래 전망: <수혜 기업·섹터, 주목할 트렌드, 성장 촉진 요인 또는 리스크>"
-  ]
+    "**개요:** <어떤 시장·산업 분야를 다루며 왜 지금 중요한지, 일반인도 쉽게 이해할 수 있도록 1-2문장으로 설명>",
+    "**핵심 내용:** <주요 발표·연구 결과·제품 내용을 전문 용어 없이 풀어서 설명>",
+    "**기술적 차별성:** <기존 솔루션 대비 무엇이 새롭고 다른지, 쉬운 언어로 설명>",
+    "**시장 파급력:** <시장 규모(TAM/SAM), CAGR, 매출·투자 수치 등 정량 데이터를 최우선으로 인용. 수치가 없으면 주요 플레이어들에 대한 사업적 함의를 구체적으로 분석>",
+    "**투자·미래 전망:** <수혜 기업·섹터, 주목할 트렌드, 성장 촉진 요인 또는 리스크를 일반인도 쉽게 이해할 수 있도록 설명>"
+  ],
+  "keyword_relevance": "<일반인을 위한 키워드별 시장 해설 — 반드시 한국어로 작성. 매칭된 키워드 중 첫 번째부터 최대 3개를 골라, 각 키워드에 대해 독립된 소제목(예: **`data center` 관련성**)을 붙이고 2-3문단으로 설명하라: (1) 해당 키워드가 우리 일상과 어떻게 연결되는지 쉽게 설명, (2) 이 뉴스/기사가 해당 키워드 관점에서 갖는 구체적인 시장적 의미와 파급력, (3) 투자자·소비자·일반인이 이 키워드 맥락에서 주목해야 할 포인트.>
+
+CRITICAL KOREAN GENERATION RULES (반드시 준수):
+
+[0. 작성 방식 — 직역 금지]
+- ko_summary_steps와 keyword_relevance는 en_summary_steps의 직역·대역이 아니다. 같은 사실을 한국 독자가 읽기 자연스러운 문장으로 독립적으로 재서술한다.
+- 영어 명사구·수식어·전치사구를 한국어 어순으로 옮기지 않는다. 의미 단위로 문장을 새로 짠다.
+- 영어 'flexible', 'holder', 'owner', 'participant' 등을 '유연', '보유자' 등으로 기계적으로 대응시키지 않는다.
+- 전문 용어는 한국어 업계에서 실제로 쓰이는 표현을 우선한다. 한국어에 없는 조어·직역어는 금지.
+
+[1. 사실 정확성 — 절대 원칙]
+- 수치, 비율, 날짜, 기업명, 제품명 등 모든 정량·정성 데이터는 원문과 100% 일치시킨다. 생략·변경·근사치 표현 금지.
+- 원문에 없는 내용을 추론하거나 추가하지 않는다. 제공된 데이터에 근거한 설명만 작성한다.
+
+[2. 구문 조정 — 자연스러운 한국어 비즈니스 문체]
+- 영어 어순을 직역한 어색한 구문은 절대 사용하지 않는다.
+- 영어 수동태는 한국어 능동 구문으로 전환한다.
+  * 금지: "~에 의해 발표된 것으로 알려짐"
+  * 허용: "~이 발표함" 또는 "~을 발표함"
+- 번역 잉여 표현 남용 금지: '~에 대한', '~를 가짐', '~를 통한'.
+- 긴 영어 문장은 두 문장으로 분리해 명료하게 작성한다.
+
+[3. 전문 용어 — 업계 표준 우선, 직역어 금지]
+- 확립된 업계 표준 용어를 그대로 사용한다. 영어 단어를 한국어 어절로 쪼개 번역하지 않는다.
+- 공통:
+  * Grid stability → '전력망 안정성' 또는 '계통 안정성'
+  * Supply chain → '공급망'
+  * Data center → '데이터센터'
+- 전력·에너지 (자주 틀리는 직역 → 올바른 표현):
+  * flexible load → '수요조절 가능 부하' (금지: '유연 부하')
+  * flexible demand → '수요조절(DR) 자원' (금지: '유연 수요')
+  * flexible capacity → '조절 가능 용량' (금지: '유연 용량')
+  * load holder / owner / participant → '참여 기업·시설', '운영 주체', '수요조절 참여자' (금지: '부하 보유자', '유연 부하 보유자')
+  * demand response → '수요반응(DR)'
+  * aggregator → '집합 사업자' 또는 'aggregator'
+  * ancillary services → '보조서비스'
+  * frequency regulation → '주파수 조절' (FCR/aFRR 맥락)
+  * behind-the-meter → '배후계량'
+  * distributed energy resource → '분산에너지자원(DER)'
+  * virtual power plant → '가상발전소(VPP)'
+  * wholesale market → '도매시장'
+  * peak load → '첨두 부하'
+- 전문 약어(CAGR, TAM, BESS, LLM, GPU 등)는 첫 등장 시 괄호 병기: 예) "CAGR(연평균 성장률)", "BESS(배터리 에너지 저장장치)".
+- 같은 용어는 두 번째 등장부터 원어만 사용.
+
+[4. 문체 및 종결어미]
+- 모든 문장은 간결한 명사형 종결로 마친다: '-함', '-임', '-전망됨', '-분석됨', '-확인됨'.
+- '-입니다', '-합니다', '-됩니다', '-있습니다' 등 '-습니다/ㅂ니다' 어미는 절대 사용하지 않는다.
+- 서술어가 명사구로 자연스럽게 끝나는 경우, 종결어미 없이 명사로 마친다.
+
+[5. 직역 금지 예시 — 에너지·전력]
+- 원문: "BESS, EVs, and industrial flexible load holders can earn new revenue."
+  * 금지: "BESS·전기차·산업용 유연 부하 보유자에게 새로운 수익 창출 경로가 열림."
+  * 정답: "BESS·전기차·산업용 수요조절이 가능한 시설·기업에 새로운 수익원이 생김."
+- 원문: "The platform aggregates flexible demand and manages 18 GW of flexible capacity."
+  * 금지: "유연 수요를 집합하고 유연 용량 18GW를 관리함."
+  * 정답: "수요조절(DR) 자원을 묶어 포트폴리오로 운영하며, 조절 가능 용량 18GW를 관리함."
+
+[올바른 예시]
+- 원문 의미: "The rapid integration of renewable energy is considered to pose a threat to grid stability."
+- 금지(직역체): "재생에너지의 빠른 통합은 전력망 안정성에 위협을 가하는 것으로 간주됩니다."
+- 금지(과잉의역): "재생에너지가 너무 급하게 늘어나서 전력망이 곧 터질 위기임."
+- 정답: "신재생에너지 발전 비중 급증으로 전력망 안정성 확보가 당면 과제로 부상함."
 }
 """
+
+
+def polish_korean(text: str) -> str:
+    """Fix common literal calques in Korean LLM output."""
+    polished = text
+    for pattern, replacement in _KOREAN_PHRASE_FIXES:
+        polished = re.sub(pattern, replacement, polished)
+    return polished
 
 
 def _extract_json(content: str) -> dict:
@@ -72,13 +156,15 @@ class Summarizer:
             api_key=os.getenv("OPENAI_API_KEY"),
             base_url=os.getenv("OPENAI_BASE_URL"),
         )
+        self._top_keywords: list[str] = settings.keywords[:3]
 
     def summarize(self, article: FilteredArticle) -> SummarizedArticle:
         user_prompt = (
             f"Title: {article.title}\n"
             f"URL: {article.url}\n"
             f"Source: {article.source_name} ({article.category})\n"
-            f"Matched keywords: {', '.join(article.matched_keywords)}\n"
+            f"Matched keywords (all): {', '.join(article.matched_keywords)}\n"
+            f"Top 3 priority keywords for keyword_relevance section: {', '.join(self._top_keywords)}\n"
             f"Content preview: {article.summary[:2000]}"
         )
 
@@ -108,8 +194,9 @@ class Summarizer:
         payload = _extract_json(response.choices[0].message.content or "{}")
         summary = (payload.get("summary") or "").strip()
         trends = payload.get("key_trends") or []
-        ko_steps = payload.get("ko_summary_steps") or []
+        ko_steps = [polish_korean(str(s).strip()) for s in (payload.get("ko_summary_steps") or []) if str(s).strip()]
         en_steps = payload.get("en_summary_steps") or []
+        keyword_relevance = polish_korean((payload.get("keyword_relevance") or "").strip())
 
         if article.url not in summary:
             summary = f"{summary} Source: {article.url}".strip()
@@ -125,6 +212,7 @@ class Summarizer:
             key_trends=[str(t).strip() for t in trends if str(t).strip()],
             ko_summary_steps=[str(s).strip() for s in ko_steps if str(s).strip()],
             en_summary_steps=[str(s).strip() for s in en_steps if str(s).strip()],
+            keyword_relevance=keyword_relevance,
         )
 
     def summarize_batch(self, articles: list[FilteredArticle]) -> list[SummarizedArticle]:

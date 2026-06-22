@@ -11,16 +11,22 @@ on:
         required: false
         default: ''
 
+permissions:
+  contents: write
+
+concurrency:
+  group: repo-push
+  cancel-in-progress: false
+
 jobs:
   daily-monitor:
     runs-on: ubuntu-latest
 
-    permissions:
-      contents: write   # needed to push the daily report back to the repo
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
@@ -32,7 +38,7 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Create required directories
-        run: mkdir -p data output/daily output/logs
+        run: mkdir -p data output/daily output/monthly output/logs
 
       - name: Run daily monitor
         env:
@@ -46,10 +52,23 @@ jobs:
             python -m src.main daily
           fi
 
+      - name: List generated files
+        run: |
+          echo "=== output/daily ==="
+          ls -la output/daily/ || true
+          echo "=== data ==="
+          ls -la data/ || true
+
       - name: Commit daily report and database to repo
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A output/daily/*.md data/monitor.db 2>/dev/null || true
           git add output/daily/ data/monitor.db
-          git diff --staged --quiet && echo "No new report to commit." || \
-            git commit -m "report: daily $(date -u +%Y-%m-%d)" && git push
+          if git diff --staged --quiet; then
+            echo "No new report to commit."
+            exit 0
+          fi
+          git commit -m "report: daily $(date -u +%Y-%m-%d)"
+          git pull --rebase origin main
+          git push origin HEAD:main

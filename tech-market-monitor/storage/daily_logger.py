@@ -111,6 +111,20 @@ class DailyLogger:
             ).fetchall()
         return [dict(r) for r in rows]
 
+    def get_cached_summaries(self, urls: list[str]) -> dict[str, str]:
+        """Return {url: llm_summary} for URLs that already have a non-empty llm_summary."""
+        if not urls:
+            return {}
+        placeholders = ",".join("?" * len(urls))
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"SELECT url, llm_summary FROM items"
+                f" WHERE url IN ({placeholders})"
+                f"   AND llm_summary IS NOT NULL AND llm_summary != ''",
+                urls,
+            ).fetchall()
+        return {row["url"]: row["llm_summary"] for row in rows}
+
     # ── Internal ───────────────────────────────────────────────────────────────
 
     def _init_db(self) -> None:
