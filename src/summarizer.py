@@ -18,6 +18,9 @@ logger = logging.getLogger(__name__)
 _REQUEST_DELAY = float(os.getenv("SUMMARIZER_REQUEST_DELAY", "1.0"))
 _MAX_RETRIES = 5
 
+# Matches stray Chinese/Japanese characters embedded in Korean text.
+_CJK_RE = re.compile(r"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]+")
+
 # Post-processing fixes for common LLM calques (longer patterns first).
 _KOREAN_PHRASE_FIXES: list[tuple[str, str]] = [
     (r"산업용\s*유연\s*부하\s*보유자", "산업용 수요조절이 가능한 시설·기업"),
@@ -68,6 +71,9 @@ CRITICAL KOREAN GENERATION RULES (반드시 준수):
 - keyword_relevance는 keywords.txt 상위 3개 키워드 각각의 일반적 시장 설명이 아니다. **이 기사**가 당일 데일리 모니터링의 그 3개 분석 기준 키워드와 어떻게 연결되는지를 통합 서술한다. 'OO와 관련하여'로 키워드별 문단을 나누지 않는다.
 - 영어 명사구·수식어·전치사구를 한국어 어순으로 옮기지 않는다. 의미 단위로 문장을 새로 짠다.
 - 영어 'flexible', 'holder', 'owner', 'participant' 등을 '유연', '보유자' 등으로 기계적으로 대응시키지 않는다.
+- 한국어 서술에 한자(漢字)·일본어 히라가나·가타카나를 일절 사용하지 않는다. 중국어·일본어 원문에서 개념을 가져올 때도 해당 문자를 그대로 삽입하지 않는다.
+  * 금지: "처리需求 증가", "AI処理 능력", "데이터센터市場", "수요需求"
+  * 정답: "처리 수요 증가", "AI 처리 능력", "데이터센터 시장", "수요"
 - 전문 용어는 한국어 업계에서 실제로 쓰이는 표현을 우선한다. 한국어에 없는 조어·직역어는 금지.
 
 [1. 사실 정확성 — 절대 원칙]
@@ -127,9 +133,19 @@ CRITICAL KOREAN GENERATION RULES (반드시 준수):
 """
 
 
+def strip_cjk_from_korean(text: str) -> str:
+    """Remove stray Chinese/Japanese characters from Korean-language text.
+
+    LLMs occasionally embed CJK characters (e.g. '需求', '処理') when
+    translating from Chinese or Japanese sources.  These are not valid in
+    Korean prose and must be stripped before the text is displayed.
+    """
+    return _CJK_RE.sub("", text)
+
+
 def polish_korean(text: str) -> str:
-    """Fix common literal calques in Korean LLM output."""
-    polished = text
+    """Fix common literal calques and remove stray CJK characters in Korean LLM output."""
+    polished = strip_cjk_from_korean(text)
     for pattern, replacement in _KOREAN_PHRASE_FIXES:
         polished = re.sub(pattern, replacement, polished)
     return polished

@@ -8,7 +8,7 @@ from datetime import date, datetime
 from pathlib import Path
 
 from src.models import SummarizedArticle
-from src.summarizer import polish_korean
+from src.summarizer import polish_korean, strip_cjk_from_korean
 
 logger = logging.getLogger(__name__)
 
@@ -226,7 +226,13 @@ def _infer_tags(article: SummarizedArticle) -> list[str]:
 
 
 def _strip_heading(text: str) -> str:
-    return re.sub(r"^\*\*[^*]+:\*\*\s*", "", text.strip())
+    """Remove bold headings and numbered-step prefixes from a summary line."""
+    text = text.strip()
+    # Remove **Bold:** style headings (English and Korean)
+    text = re.sub(r"^\*\*[^*]+:\*\*\s*", "", text)
+    # Remove "Step N - Label:" or "N단계 - 레이블:" style prefixes
+    text = re.sub(r"^(?:Step\s+\d+\s*[-–]\s*\S.*?:|[\d]+단계\s*[-–]\s*\S.*?:)\s*", "", text, flags=re.IGNORECASE)
+    return text
 
 
 def _build_summary_lines(article: SummarizedArticle) -> list[str]:
@@ -234,7 +240,7 @@ def _build_summary_lines(article: SummarizedArticle) -> list[str]:
     facts: list[str] = []
 
     for step in steps:
-        cleaned = polish_korean(_strip_heading(step))
+        cleaned = polish_korean(strip_cjk_from_korean(_strip_heading(step)))
         cleaned = re.sub(r"\[\d+\]\s*$", "", cleaned).strip()
         if cleaned and not cleaned.startswith("(해석)"):
             facts.append(cleaned)
@@ -278,39 +284,74 @@ def _published_date(article: SummarizedArticle, fallback: date) -> str:
     return fallback.isoformat()
 
 
+def _one_liner(article: SummarizedArticle) -> str:
+    """Extract the single most informative sentence from an article for the executive summary.
+
+    Priority: "시장 파급력" step (index 3) → "개요" step (index 0) → llm_summary headline.
+    Keeps the result under 130 characters so the summary stays scannable.
+    """
+    steps = article.ko_summary_steps
+    for idx in (3, 0, 1, 2, 4):
+        if idx < len(steps):
+            cleaned = polish_korean(strip_cjk_from_korean(_strip_heading(steps[idx])))
+            cleaned = re.sub(r"\[\d+\]\s*$", "", cleaned).strip()
+            if cleaned and not cleaned.startswith("(해석)") and len(cleaned) > 15:
+                return cleaned[:130] + ("…" if len(cleaned) > 130 else "")
+    if article.llm_summary:
+        h = re.sub(r"\s*Source:.*$", "", article.llm_summary, flags=re.IGNORECASE).strip()
+        h = strip_cjk_from_korean(h)
+        return h[:130] + ("…" if len(h) > 130 else "")
+    return ""
+
+
 def _build_executive_summary(articles: list[SummarizedArticle]) -> list[str]:
-    highlights: list[str] = []
-    for article in articles[:2]:
-        if article.ko_summary_steps:
-            highlights.append(polish_korean(_strip_heading(article.ko_summary_steps[0])))
-        elif article.llm_summary:
-            highlights.append(re.sub(r"\s*Source:.*$", "", article.llm_summary, flags=re.IGNORECASE).strip())
+    """Build a concise executive summary covering every article at a glance.
 
-    sources = ", ".join(dict.fromkeys(a.source_name for a in articles))
-    themes = ", ".join(dict.fromkeys(t for a in articles for t in a.key_trends[:1])) or "전력·그리드·에너지 인프라"
+    Structure:
+      1. One-sentence synthesis (count + dominant theme).
+      2. Bullet per article — title + key insight in one line.
+      3. Notable signal + contradiction note.
+    """
+    # Top 3 most representative themes (first trend per article, deduplicated, capped)
+    top_themes = list(dict.fromkeys(t for a in articles for t in a.key_trends[:1]))[:3]
+    themes_str = ", ".join(top_themes) if top_themes else "기술·시장 동향"
+
+    sources = ", ".join(dict.fromkeys(a.source_name for a in articles[:3]))
+    extra = f" 외 {len(articles) - 3}개 출처" if len(articles) > 3 else ""
+
     synthesis = (
-        f"오늘 수집된 {len(articles)}건({sources})은 {themes} 등을 중심으로 "
-        f"정책·투자·기술 동향이 같은 방향으로 수렴하는 흐름을 보여줌."
+        f"오늘 수집된 {len(articles)}건 ({sources}{extra}) — "
+        f"핵심 흐름: **{themes_str}**. 아래 항목별 1줄 요약으로 전체 내용을 파악할 것."
     )
 
-    key_point = highlights[0] if highlights else "당일 핵심 이슈를 추가 확인 필요"
-    signal = (
-        ", ".join(t for a in articles for t in a.key_trends[:1])
-        or "단기 보도에서 반복되는 키워드 추적 필요"
-    )
-
-    return [
+    lines = [
         "## 오늘의 요약 (Daily Executive Summary)",
         "",
         synthesis,
         "",
-        f"- **오늘의 핵심:** {key_point}",
+        "**항목별 핵심 요약:**",
+    ]
+
+    for article in articles:
+        one = _one_liner(article)
+        short_title = article.title[:55] + ("…" if len(article.title) > 55 else "")
+        if one:
+            lines.append(f"- **{short_title}**: {one}")
+        else:
+            lines.append(f"- **{short_title}**")
+
+    all_trends = list(dict.fromkeys(t for a in articles for t in a.key_trends[:2]))[:4]
+    signal = ", ".join(all_trends) if all_trends else themes_str
+
+    lines += [
+        "",
         f"- **눈여겨볼 신호:** {signal}",
         "- **상충되는 정보:** (해당 없음)",
         "",
         "---",
         "",
     ]
+    return lines
 
 
 def _build_item_block(
@@ -339,10 +380,23 @@ def _build_item_block(
         f"- **저자/발행기관:** {article.source_name}",
         f"- **발행일:** {_published_date(article, log_date)}",
         f"- **링크/DOI:** {article.url}",
-        "- **요약 (3~5줄):**",
     ]
+
+    # English original — shown first so readers can compare
+    en_steps = article.en_summary_steps or []
+    if en_steps:
+        lines.append("- **요약 (영문 원문):**")
+        for en_step in en_steps[:3]:
+            en_clean = _strip_heading(en_step)
+            en_clean = re.sub(r"\[\d+\]\s*$", "", en_clean).strip()
+            if en_clean:
+                lines.append(f"  - {en_clean}")
+
+    # Korean translation
+    lines.append("- **요약 (한국어 번역):**")
     for line in summary_lines:
         lines.append(f"  - {line}")
+
     lines += [
         f"- **신뢰도:** {credibility}",
         f"- **태그:** {' '.join(tags)}",
