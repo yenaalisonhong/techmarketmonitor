@@ -242,6 +242,7 @@ def _build_summary_lines(article: SummarizedArticle) -> list[str]:
     for step in steps:
         cleaned = polish_korean(strip_cjk_from_korean(_strip_heading(step)))
         cleaned = re.sub(r"\[\d+\]\s*$", "", cleaned).strip()
+        cleaned = _to_hamche_sentences(cleaned)
         if cleaned and not cleaned.startswith("(해석)"):
             facts.append(cleaned)
         if len(facts) >= 3:
@@ -318,10 +319,23 @@ def _kw_score(text: str, keywords: list[str]) -> int:
     return sum(1 for k in keywords if k.lower() in t)
 
 
-# Patterns that mark a sentence as too vague to display in the executive summary.
-# Compiled patterns for sentence-final -다체 → -함/임체 normalization.
+# Compiled patterns for sentence-final -다체 / 합니다체 → -함/임체 normalization.
 # Applied to the one-liner executive-summary bullets so the style is uniform.
+# 합니다/ㅂ니다체 patterns must precede -다체 patterns to avoid partial mismatches.
 _HAMCHE_FIXES: list[tuple[re.Pattern, str]] = [
+    # 합니다/ㅂ니다체 endings
+    (re.compile(r"해야\s*합니다([.。]?)$"), r"해야 함\1"),
+    (re.compile(r"([가-힣])합니다([.。]?)$"), r"\1함\2"),
+    (re.compile(r"([가-힣])입니다([.。]?)$"), r"\1임\2"),
+    (re.compile(r"([가-힣])있습니다([.。]?)$"), r"\1있음\2"),
+    (re.compile(r"([가-힣])없습니다([.。]?)$"), r"\1없음\2"),
+    (re.compile(r"([가-힣])됩니다([.。]?)$"), r"\1됨\2"),
+    (re.compile(r"([가-힣])보입니다([.。]?)$"), r"\1보임\2"),
+    (re.compile(r"([가-힣])줍니다([.。]?)$"), r"\1줌\2"),
+    (re.compile(r"([가-힣])둡니다([.。]?)$"), r"\1둠\2"),
+    (re.compile(r"나타냅니다([.。]?)$"), r"나타냄\1"),
+    (re.compile(r"나타납니다([.。]?)$"), r"나타남\1"),
+    # -다체 endings
     (re.compile(r"해야\s*한다([.。]?)$"), r"해야 함\1"),
     (re.compile(r"([가-힣])한다([.。]?)$"), r"\1함\2"),
     (re.compile(r"([가-힣])이다([.。]?)$"), r"\1임\2"),
@@ -330,11 +344,15 @@ _HAMCHE_FIXES: list[tuple[re.Pattern, str]] = [
     (re.compile(r"([가-힣])된다([.。]?)$"), r"\1됨\2"),
     (re.compile(r"([가-힣])보인다([.。]?)$"), r"\1보임\2"),
     (re.compile(r"([가-힣])온다([.。]?)$"), r"\1옴\2"),
+    (re.compile(r"([가-힣])진다([.。]?)$"), r"\1짐\2"),
+    (re.compile(r"([가-힣])친다([.。]?)$"), r"\1침\2"),
+    (re.compile(r"나타낸다([.。]?)$"), r"나타냄\1"),
+    (re.compile(r"나타난다([.。]?)$"), r"나타남\1"),
 ]
 
 
 def _to_hamche(text: str) -> str:
-    """Normalize sentence-final Korean -다체 endings to -함/임체 (명사형 종결).
+    """Normalize sentence-final Korean -다체/-합니다체 endings to -함/임체 (명사형 종결).
 
     Applies only to the very end of the string so that mid-sentence
     clauses ending in -다 (e.g. relative clauses) are not affected.
@@ -344,19 +362,77 @@ def _to_hamche(text: str) -> str:
     return text
 
 
+def _to_hamche_sentences(text: str) -> str:
+    """Apply _to_hamche to every sentence within a multi-sentence string.
+
+    Splits on sentence boundaries (. ! ? 。 followed by whitespace or string end),
+    normalizes each sentence, then rejoins.
+    """
+    parts = re.split(r"(?<=[.!?。])\s+", text.strip())
+    return " ".join(_to_hamche(part) for part in parts)
+
+
+# Patterns that mark a sentence as too vague to display in the executive summary.
+# A sentence is vague when it states no concrete fact and merely asserts that
+# something is "important", "rapidly developing", or "related to keywords".
 _VAGUE_PATTERNS = re.compile(
+    # Original patterns
     r"관련(이|성이|된)\s*(있음|높음|깊음|있다|높다)[.。]?$"
-    r"|^이\s*기사는.{0,20}관련"
     r"|관련성이\s*높은\s*내용을\s*담고"
-    r"|관련이\s*없는",
+    r"|관련이\s*없는"
+    r"|직접적인\s*연관성"
+    # Sentences starting with "이 기사는/이 논문은" — leads with meta-commentary, not facts
+    r"|^이\s*(기사|논문|연구|보고서)는"
+    # "rapidly developing/growing" — states no specific fact
+    r"|빠르게\s*(발전하고|성장하고|확산되고|변화하고|발전함|성장함)"
+    # "emphasises importance" — no specific event or number
+    r"|중요성을\s*(강조|보여|나타내|시사)"
+    r"|(중요한|핵심적인)\s*역할을\s*(함|하고|합니다|한다)"
+    # "expected to have big impact" — vague prediction, no numbers
+    r"|큰\s*영향을\s*미칠\s*것으로\s*(예상|전망)"
+    # Three target keywords listed together with generic verb — no article fact
+    r"|(전력계통|파워그리드|스마트그리드).{0,40}(전력계통|파워그리드|스마트그리드).{0,40}(빠르게|급속|발전|성장)"
+    # Sentence starts with a target keyword followed by a generic definition or benefit
+    r"|^(전력계통|파워그리드|스마트그리드)(은|는|이|가)\s*.{0,80}(도움이\s*될\s*수\s*있|필요한|기반\s*기술|고급\s*기술|역할을\s*함)"
+    # Generic "important move/development" without specifics
+    r"|중요한\s*(움직임|변화|발전임|사안)"
+    # "demand is expected to grow" — no article-specific trigger
+    r"|수요가\s*증가할\s*것으로\s*(예상|전망)"
+    # "worth paying attention" filler
+    r"|주목할\s*(만한|필요가\s*있)"
+    r"|눈여겨봐야"
+    # Negative / weak relevance: "관련하여 파급력을 미치지 않지만", "직접 관련이 없는"
+    r"|관련하여.{0,40}않"
+    r"|파급력을\s*미치지\s*않"
+    r"|직접.*관련.{0,20}없"
+    r"|관련성이\s*낮"
+    # Generic "important role" with no specific fact
+    r"|중요한\s*역할을\s*(할|하는|한|해야|함)"
+    # Keyword used as subject of a generic market/opportunity statement
+    r"|^(전력계통|파워그리드|스마트그리드)(은|는)\s*.{0,50}(잠재력|기회|투자|역할|시장\s*(규모|성장))"
+    # "X의 발전을 위한" — keyword as goal destination, not article-specific fact
+    r"|(전력계통|파워그리드|스마트그리드)\s*의\s*발전을\s*위한"
+    # "X는 Y하는 시스템으로/시스템임" — plain dictionary definition, not article fact
+    r"|^(전력계통|파워그리드|스마트그리드)(은|는)\s*.{0,60}(시스템으로|시스템임|시스템이다|네트워크로|기술임|기술이다)"
+    # "필요성을 강조" — same vague structure as 중요성을 강조
+    r"|필요성을\s*(강조|보여|나타내|시사)"
+    # "우려가 커지고 있다" — generic concern without article specifics
+    r"|우려가\s*(커지고|증가하고)\s*(있다|있음)"
+    # "관련하여 … 강조됨" — relevance wrapper masquerading as conclusion
+    r"|(관련하여|관련한)\s*.{0,40}(강조됨|시사됨|제시됨)[.。]?$",
     re.IGNORECASE,
 )
 
 
 def _is_vague(sentence: str) -> bool:
-    """Return True if *sentence* is a generic, uninformative placeholder."""
+    """Return True if *sentence* is a generic, uninformative placeholder.
+
+    A sentence is considered vague when it:
+    - Is shorter than 50 characters (too brief to be informative).
+    - Matches one of the _VAGUE_PATTERNS (generic filler phrases).
+    """
     s = sentence.strip()
-    if len(s) < 45:
+    if len(s) < 50:
         return True
     if _VAGUE_PATTERNS.search(s):
         return True
@@ -390,43 +466,72 @@ def _one_liner(article: SummarizedArticle, top_keywords: list[str] | None = None
     """Extract the single most keyword-relevant sentence for the executive summary.
 
     Priority:
-      1. keyword_relevance field — scan all sentences for the first specific one.
-         Vague / generic sentences are skipped entirely.
-      2. Best-scoring ko_summary_step by top_keywords match count, then by
-         preferred index order (3 → 0 → 1 → 2 → 4).
-      3. llm_summary headline as last resort.
+      1. keyword_relevance field — scan all sentences for the first specific,
+         non-vague one that mentions a tracked keyword.
+      2. Best-scoring ko_summary_step by top_keywords match count.  When the
+         LLM confirmed relevance (keyword_relevance is non-empty), articles whose
+         steps use synonymous vocabulary (e.g. '전력망' for '파워그리드') are also
+         included — keyword match is preferred but not strictly required.
     """
     kws = top_keywords or []
+    # If the LLM already flagged this article as relevant, be lenient in the
+    # ko_summary_step fallback so synonymous vocab doesn't accidentally suppress it.
+    lm_confirmed = bool(article.keyword_relevance)
 
-    # 1. LLM-generated keyword_relevance: find the first specific sentence
+    def _emit(text: str, require_keyword: bool = True) -> str:
+        """Apply _first_sentence + _to_hamche; gate on keyword presence unless relaxed."""
+        out = _to_hamche(_first_sentence(text))
+        if not out:
+            return ""
+        if require_keyword and _kw_score(out, kws) == 0:
+            return ""
+        return out
+
+    # 1. LLM-generated keyword_relevance: scan sentences for one that is specific
+    #    AND explicitly mentions at least one tracked keyword after truncation.
     if article.keyword_relevance:
-        best = _best_from_relevance(article.keyword_relevance)
-        if best:
-            return _to_hamche(_first_sentence(best))
+        kr = polish_korean(strip_cjk_from_korean(article.keyword_relevance)).strip()
+        kr = re.sub(r"\[\d+\]\s*$", "", kr).strip()
+        for raw in re.split(r"(?<=[.!?])\s+", kr):
+            s = raw.strip().rstrip(".")
+            if not s:
+                continue
+            candidate = s + ("." if not raw.endswith((".","!","?")) else "")
+            if _is_vague(candidate):
+                continue
+            result = _emit(candidate, require_keyword=True)
+            if result:
+                return result
 
-    # 2. Pick the ko_summary_step most relevant to the tracked keywords
+    # 2. Score each ko_summary_step by keyword count.
+    #    When LLM confirmed relevance, include steps with score=0 as a fallback
+    #    so articles using synonymous vocab (전력망, 그리드 등) are not silently omitted.
     steps = article.ko_summary_steps
-    _pref = {3: 0, 0: 1, 1: 2, 2: 3, 4: 4}  # preferred index order
+    _pref = {1: 0, 3: 1, 0: 2, 2: 3, 4: 4}
 
-    candidates: list[tuple[int, int, int, str]] = []  # (neg_score, pref, idx, text)
+    candidates: list[tuple[int, int, int, str]] = []
     for idx, raw in enumerate(steps):
         cleaned = polish_korean(strip_cjk_from_korean(_strip_heading(raw)))
         cleaned = re.sub(r"\[\d+\]\s*$", "", cleaned).strip()
         if not cleaned or cleaned.startswith("(해석)") or len(cleaned) <= 15:
             continue
         score = _kw_score(cleaned, kws)
-        candidates.append((-score, _pref.get(idx, 9), idx, cleaned))
+        if score > 0 or lm_confirmed:
+            candidates.append((-score, _pref.get(idx, 9), idx, cleaned))
 
     if candidates:
-        candidates.sort()  # highest score first, then preferred index
-        best = candidates[0][3]
-        return _to_hamche(_first_sentence(best))
+        candidates.sort()
+        for _, _, _, best in candidates:
+            # Relax keyword requirement when LLM confirmed relevance;
+            # but still drop vague sentences.
+            first = _first_sentence(best)
+            if _is_vague(first):
+                continue
+            result = _emit(best, require_keyword=not lm_confirmed)
+            if result:
+                return result
 
-    # 3. llm_summary headline
-    if article.llm_summary:
-        h = re.sub(r"\s*Source:.*$", "", article.llm_summary, flags=re.IGNORECASE).strip()
-        h = strip_cjk_from_korean(h)
-        return _to_hamche(_first_sentence(h))
+    # No relevant content found → omit article from executive summary.
     return ""
 
 
@@ -461,13 +566,18 @@ def _build_executive_summary(
         "**항목별 핵심 요약:**",
     ]
 
+    included = 0
     for article in articles:
         one = _one_liner(article, top_keywords)
+        if not one:
+            continue  # not relevant to tracked keywords — omit from executive summary
         short_title = article.title[:55] + ("…" if len(article.title) > 55 else "")
-        if one:
-            lines.append(f"- **{short_title}**: {one}")
-        else:
-            lines.append(f"- **{short_title}**")
+        lines.append(f"- **{short_title}**: {one}")
+        included += 1
+
+    skipped = len(articles) - included
+    if skipped:
+        lines.append(f"- *(이하 {skipped}건은 추적 키워드와 직접 관련성 없어 생략)*")
 
     all_trends = list(dict.fromkeys(t for a in articles for t in a.key_trends[:2]))[:4]
     signal = ", ".join(all_trends) if all_trends else themes_str
