@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import re
-from collections import Counter
+from collections import Counter, defaultdict
 from datetime import date, datetime
 from pathlib import Path
 
@@ -888,33 +888,214 @@ def _one_liner(article: SummarizedArticle, top_keywords: list[str] | None = None
     return f"{fact} {connection}"
 
 
+_MATCH_LABEL_KO: dict[str, str] = {
+    "data center": "데이터센터(data center)",
+    "bess": "BESS(배터리 저장)",
+    "battery energy storage": "BESS(배터리 저장)",
+    "power grid": "전력망(power grid)",
+    "power system": "전력계통(power system)",
+    "smart grid": "스마트그리드(smart grid)",
+    "microgrid": "마이크로그리드(microgrid)",
+    "ai infrastructure": "AI 인프라(ai infrastructure)",
+    "supply chain": "공급망(supply chain)",
+    "renewable energy": "재생에너지(renewable energy)",
+    "energy storage": "에너지 저장(energy storage)",
+}
+
+
+def _match_label(term: str) -> str:
+    return _MATCH_LABEL_KO.get(term.lower(), term)
+
+
+def _relevance_trigger(
+    article: SummarizedArticle,
+    level: str,
+    top_keywords: list[str],
+) -> str:
+    """Explain which match or text cue drove the direct/indirect classification."""
+    matched = {k.lower() for k in article.matched_keywords}
+    blob = _article_text_blob(article)
+
+    if level == "direct":
+        direct_hits = sorted(matched & _POWER_DIRECT_MATCHES)
+        if direct_hits:
+            label = _match_label(direct_hits[0])
+            suffix = f"·{_match_label(direct_hits[1])}" if len(direct_hits) > 1 else ""
+            return f"수집·매칭 키워드 {label}{suffix}에 해당"
+        if _POWER_SUPPLY_HINT.search(blob):
+            return "전력 공급·송배전·PPA(장기 전력 구매)가 기사의 핵심 내용"
+        power_kws = [kw for kw in top_keywords if kw.lower() in blob.lower()]
+        if power_kws:
+            return f"기사 본문에 '{power_kws[0]}'이(가) 직접 등장"
+        if _POWER_TEXT_HINT.search(blob):
+            return "기사 본문에서 전력계통·전력망·스마트그리드가 핵심 주제"
+        return "추적 키워드와 기사 주제가 그대로 겹침"
+
+    indirect_hits = sorted(matched & (_POWER_INDIRECT_MATCHES | _TANGENTIAL_MATCHES))
+    if indirect_hits:
+        return _match_label(indirect_hits[0])
+    if _text_mentions_power(blob, top_keywords):
+        return "간접 매칭 키워드 + 본문 전력·그리드 언급"
+    return "간접 영향 경로"
+
+
+def _kw_impact_narrative(top_keywords: list[str], reason: str) -> str:
+    """One readable sentence linking each tracking keyword to the indirect reason."""
+    kw_set = set(top_keywords[:3])
+
+    if reason == "데이터센터 전력 부하":
+        labels: list[str] = []
+        if "전력계통" in kw_set:
+            labels.append("**전력계통**(발전·송전 용량·피크 부하)")
+        if "파워그리드" in kw_set:
+            labels.append("**파워그리드**(배전망·전력 장기 구매 PPA)")
+        if "스마트그리드" in kw_set:
+            labels.append("**스마트그리드**(부하 예측·수요반응·피크 분산)")
+        if labels:
+            joined = ", ".join(labels)
+            return (
+                f"다만 데이터센터는 24시간 대량 전기를 쓰는 설비라, "
+                f"신규 건설·확장 소식은 {joined} "
+                f"쪽 이슈로 이어질 수 있음"
+            )
+    elif reason == "ESS·그리드 저장":
+        return (
+            "배터리·ESS는 전력 저장·피크 완화와 연결되나, "
+            "기사는 배터리 기술·출시·시장이 중심이라 전력망 운영 이슈는 2순위"
+        )
+    elif reason == "AI 인프라 전력 소비":
+        kws = " · ".join(top_keywords[:3])
+        return f"AI 인프라 확장은 {kws} 관점의 전력 수요·공급·망 운영에 간접 영향을 줄 수 있음"
+
+    kws = " · ".join(top_keywords[:3])
+    return f"{reason} 경로로 {kws} 추적 키워드에 간접 영향 가능"
+
+
+def _direct_implication_plain(top_keywords: list[str]) -> str:
+    parts: list[str] = []
+    for kw in top_keywords[:3]:
+        if kw == "전력계통":
+            parts.append("전력망 안정·용량·부하")
+        elif kw == "파워그리드":
+            parts.append("송전·배전·피크·VPP")
+        elif kw == "스마트그리드":
+            parts.append("지능형 운영·분산자원·수요반응")
+    focus = ", ".join(parts[:2]) if parts else "전력·그리드"
+    return (
+        f"즉 기사가 다루는 핵심이 {focus} 등 추적 키워드와 바로 맞닿아 "
+        f"'직접' 연관으로 분류함"
+    )
+
+
+def _indirect_implication_plain(reason: str, top_keywords: list[str]) -> str:
+    """Plain multi-sentence explanation for indirect keyword linkage."""
+    narrative = _kw_impact_narrative(top_keywords, reason)
+    closing = (
+        "위 표는 기사 사실(누가·무엇·수치)을 정리한 것이고, "
+        "여기서는 '왜 전력 키워드와 연결되는지'만 설명함. "
+        "기사 1차 주제가 전력망·스마트그리드 정책·기술이 아니므로 '간접'으로 표시함"
+    )
+    return f"{narrative}. {closing}"
+
+
+def _short_item_label(article: SummarizedArticle, limit: int = 48) -> str:
+    title = article.title.strip()
+    if len(title) <= limit:
+        return title
+    return title[: limit - 1].rstrip() + "…"
+
+
+def _signal_kw_label(
+    article: SummarizedArticle,
+    level_label: str,
+    top_keywords: list[str],
+) -> str:
+    """Pick the most relevant tracking-keyword subset for the signal header."""
+    blob = _article_text_blob(article).lower()
+    hits = [kw for kw in top_keywords[:3] if kw.lower() in blob]
+    if hits:
+        return " · ".join(hits[:2])
+    if level_label == "직접":
+        return top_keywords[0] if top_keywords else "(미설정)"
+    return " · ".join(top_keywords[:3])
+
+
+def _build_keyword_signal_for_group(
+    group_items: list[tuple[SummarizedArticle, str, str, str]],
+    level_label: str,
+    top_keywords: list[str],
+) -> str:
+    articles = [row[0] for row in group_items]
+    kw_part = _signal_kw_label(articles[0], level_label, top_keywords)
+    level_key = "direct" if level_label == "직접" else "indirect"
+    trigger = _relevance_trigger(articles[0], level_key, top_keywords)
+
+    if level_label == "직접":
+        if len(articles) == 1:
+            ref = _short_item_label(articles[0])
+            body = (
+                f"{trigger}. {_direct_implication_plain(top_keywords)} "
+                f"(해당 기사: {ref})"
+            )
+        else:
+            refs = ", ".join(_short_item_label(a) for a in articles[:2])
+            extra = f" 외 {len(articles) - 2}건" if len(articles) > 2 else ""
+            body = (
+                f"{trigger}. {_direct_implication_plain(top_keywords)} "
+                f"(해당 기사: {refs}{extra})"
+            )
+    else:
+        reason = _indirect_reason(articles[0])
+        implication = _indirect_implication_plain(reason, top_keywords)
+        if len(articles) == 1:
+            ref = _short_item_label(articles[0])
+            body = (
+                f"제목·본문에 '{trigger}'가 있어 수집됐으나, "
+                f"내용은 전력망·스마트그리드가 1차 주제는 아님. {implication} "
+                f"(해당 기사: {ref})"
+            )
+        else:
+            body = (
+                f"오늘 {len(articles)}건 모두 '{trigger}' 키워드로 수집됐으나, "
+                f"내용은 전력망·스마트그리드가 1차 주제는 아님. "
+                f"{implication}"
+            )
+
+    return f"- **[{kw_part}]** **{level_label}** — {body}"
+
+
 def _build_keyword_signals(
     items: list[tuple[SummarizedArticle, str, str, str]],
     top_keywords: list[str],
 ) -> list[str]:
-    """Build up to 3 keyword-focused signals from direct/indirect items."""
-    signals: list[str] = []
-    kw_label = " · ".join(top_keywords[:3])
+    """Build up to 3 keyword-perspective signals (classification rationale, not fact repeats)."""
+    groups: dict[tuple[str, str], list[tuple[SummarizedArticle, str, str, str]]] = defaultdict(list)
 
     ordered = sorted(
         items,
         key=lambda row: 0 if row[2] == "직접" else 1 if row[2] == "간접" else 2,
     )
-    for article, fact, level_label, connection in ordered:
+    for row in ordered:
+        article, _fact, level_label, _connection = row
         if level_label not in ("직접", "간접"):
             continue
-        bracket = re.search(r"\*\*\[(.+?)\]\*\*", connection)
-        kw_part = bracket.group(1) if bracket else kw_label
-        short_fact = fact[:120] + ("…" if len(fact) > 120 else "")
-        prefix = f"**[{kw_part}]**"
-        signals.append(f"- {prefix} {short_fact}")
-        if len(signals) >= 3:
-            break
+        if level_label == "직접":
+            group_key = ("직접", article.url)
+        else:
+            group_key = ("간접", _indirect_reason(article))
+        groups[group_key].append(row)
 
-    if not signals:
-        for article, fact, level_label, connection in ordered[:3]:
-            short_fact = fact[:120] + ("…" if len(fact) > 120 else "")
-            signals.append(f"- **[{kw_label}]** {short_fact}")
+    sorted_keys = sorted(
+        groups.keys(),
+        key=lambda k: (0 if k[0] == "직접" else 1, k[1]),
+    )
+
+    signals: list[str] = []
+    for key in sorted_keys[:3]:
+        level_label = key[0]
+        signals.append(
+            _build_keyword_signal_for_group(groups[key], level_label, top_keywords)
+        )
     return signals
 
 
