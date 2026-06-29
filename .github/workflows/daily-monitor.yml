@@ -47,6 +47,7 @@ jobs:
           MODEL_NAME: ${{ secrets.MODEL_NAME }}
           TZ: Asia/Seoul
         run: |
+          python -c "from src.daily_report import save_daily_report; print('import check: ok')"
           if [ -n "${{ github.event.inputs.date }}" ]; then
             python -m src.main daily --date "${{ github.event.inputs.date }}"
           else
