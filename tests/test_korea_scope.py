@@ -92,6 +92,27 @@ def test_newsis_domestic_included() -> None:
     assert is_domestic_news(article)
 
 
+def test_korean_source_foreign_topic_excluded() -> None:
+    """Domestic RSS source reprinting a foreign-only story must be dropped."""
+    article = _article(
+        "미국 전력 섹터, 역대 최대 M&A 붐",
+        "미국 전력 유틸리티들이 데이터센터 수요로 합병을 가속함.",
+        url="https://www.yna.co.kr/news/us-power-ma",
+        source="연합뉴스 산업",
+    )
+    assert not is_domestic_news(article)
+
+
+def test_korean_actor_foreign_ops_included() -> None:
+    article = _article(
+        "삼성전자, 미국 텍사스 AI 칩 공장 추가 투자",
+        "삼성전자가 미국 텍사스에 AI 반도체 공장 투자를 확대함.",
+        url="https://www.yna.co.kr/news/samsung-texas",
+        source="연합뉴스 산업",
+    )
+    assert is_domestic_news(article)
+
+
 def test_filter_articles_drops_foreign_only() -> None:
     articles = [
         _article("美 전력 M&A 사상 최대", "미국 전력업계 거래 급증"),
@@ -116,5 +137,7 @@ if __name__ == "__main__":
     test_korean_domestic_story_included()
     test_korean_company_domestic_plan_included()
     test_newsis_domestic_included()
+    test_korean_source_foreign_topic_excluded()
+    test_korean_actor_foreign_ops_included()
     test_filter_articles_drops_foreign_only()
     print("ok")

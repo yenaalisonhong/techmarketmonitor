@@ -191,17 +191,21 @@ def is_korea_scoped(article: RawArticle | FilteredArticle | SummarizedArticle) -
     if _FOREIGN_HEADLINE.search(article.title) and not has_korea_anchor:
         return False
 
-    if _FOREIGN_GEO.search(article.title) and not has_korea_anchor and not has_hangul:
+    if _FOREIGN_GEO.search(article.title) and not has_korea_anchor:
         return False
 
-    if has_hangul:
-        return True
+    # 국내 매체 재탁재·번역 기사: 본문이 해외 주제만 다루면 제외
+    summary = getattr(article, "summary", "") or ""
+    if summary and _FOREIGN_HEADLINE.search(summary) and not has_korea_anchor:
+        return False
+    if summary and _FOREIGN_GEO.search(summary) and not has_korea_anchor:
+        return False
 
     if has_korea_anchor:
         return True
 
-    if not re.search(r"[가-힣]", article.title) and not has_korea_anchor:
-        return False
+    if has_hangul:
+        return True
 
     return False
 
