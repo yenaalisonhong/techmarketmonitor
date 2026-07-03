@@ -1,7 +1,7 @@
 # Tech Market Intelligence Monitor
 
-프라운호퍼 한국 사무소용 **기술 시장·R&D 타겟팅 모니터링 자동화 시스템**입니다.  
-국내 RSS/API에서 기사·보도자료를 수집하고(정부 URL은 본문·PDF 보강), 키워드·**정부·R&D 타깃** 규칙으로 필터링한 뒤 LLM으로 **투자 주체·위탁 연구 니즈** 중심 요약하여 **데일리 마크다운 리서치 로그**와 **월간 Word 보고서(영문·한국어)**를 생성합니다.
+프라운호퍼 한국 사무소용 **국내 R&D·기술협력 타겟팅 모니터링 자동화 시스템**입니다.  
+국내 RSS·정부 아카이브(korea.kr, PACST)에서 기사·보도자료를 수집하고(정부 URL은 본문·PDF 보강), **해외 기사 제외** + 키워드·**정부·R&D 타깃** 규칙으로 필터링한 뒤 LLM으로 **투자 주체·위탁 연구 니즈** 중심 요약하여 **데일리 R&D 인텔리전스 로그**와 **월간 Markdown 보고서**(`monthly_YYYY-MM.md`)를 생성합니다.
 
 > **일반 사용자:** 로컬 PC 설치·스케줄 등록은 [`사용설명서.md`](사용설명서.md), **GitHub 웹만**으로 리포트 확인은 [`사용설명서-깃허브.md`](사용설명서-깃허브.md)를 참고하세요.
 
@@ -288,10 +288,11 @@ python -m src.main schedule --daily-hour 8 --monthly-day 28
 
 **Stale 리포트 정리:** catch-up에서 해당 날짜 기사 0건이거나 URL dedup 후 신규 0건이면, 기존 `daily_YYYY-MM-DD.md`를 **자동 삭제** (`scheduler_state.remove_report()`).
 
-### 3. 키워드·정부 타깃 필터
+### 3. 키워드·정부 타깃·국내 범위 필터
 
 - `keywords.txt` 키워드 중 1개 이상 매칭하면 통과
 - **정부·R&D 타깃** (`is_gov_target`)은 키워드 없어도 `정부·R&D 타깃` 라벨로 통과 (`filter.py`)
+- **국내 범위:** `is_domestic_news()` — 해외-only·외신 재인쇄·비한국 URL 제외 (`korea_scope.py`, `filter.py`, `storage.py`)
 - URL 중복 제거 (같은 실행 내)
 
 ### 4. 관련성 정렬 + 상한
@@ -552,89 +553,41 @@ Cursor 규칙: `.cursor/rules/daily-research-log.mdc`
 
 ---
 
-## 월간 Word 보고서 규칙
+## 월간 R&D 인텔리전스 보고서 규칙
 
-구현: `src/report_generator.py`, `src/monthly.py`
+구현: `src/rd_monthly_report.py`, `src/monthly.py`
 
 ### 데이터 소스
 
-- **`output/daily/daily_*.md`** — `src/daily_markdown_loader.py`가 해당 월 md를 파싱
-- C급 신뢰도 항목은 `prepare_logs_for_monthly()`에서 **월간 집계 제외**
-- SQLite `daily_logs`는 URL dedup·수리용; **월간 LLM 합성 입력은 daily md**
+- **우선:** SQLite `daily_logs` — `is_domestic_news()`로 **국내 기사만** 로드
+- **폴백:** `output/daily/daily_*.md` 파싱 (`daily_markdown_loader.py`)
+- **포함 기준:** `compute_rd_match_score()` ≥ `MONTHLY_RD_MIN_SCORE`(기본 **4**)
+- C급 신뢰도 항목은 `prepare_logs_for_monthly_rd()`에서 제외
 
 ### 출력 파일
 
 | 파일 | 설명 |
 |------|------|
-| `reports/tech-market-report-YYYY-MM.docx` | 영문 TMR (`REPORTS_OUTPUT_DIR` 기준) |
-| `reports/tech-market-report-YYYY-MM-ko.docx` | 한국어 TMR |
+| `reports/monthly_YYYY-MM.md` | **국내 R&D 인텔리전스** 월간 Markdown (기본·권장) |
+| `reports/tech-market-report-YYYY-MM.docx` | (선택) 영문 Word TMR — `GENERATE_LEGACY_TMR=1`일 때만 |
 
-### LLM 합성 → JSON → Word 빌드
+### 보고서 구조 (`monthly_YYYY-MM.md`)
 
-1. daily md에서 파싱한 로그를 `[ref]` 번호와 함께 LLM에 전달
-2. LLM이 9개 섹션 JSON 반환 (`sec1`~`sec9`)
-3. `_build_document()` / `_build_document_ko()`가 Word 생성
+1. **Executive Summary** — 당월 국내 R&D·투자 트렌드 (3–4문장)
+2. **Opportunities** — 분야별 R&D 기회 (HVDC/BESS/스마트그리드 등)
+3. **Action Plan** — 부처·기업별 접촉 타겟 표 (제안 R&D 영역·접촉 논리)
+4. **부록: 월간 R&D 스코어카드** — 적합도·투자 주체·핵심 이슈·출처 링크
 
-### 인용 규칙 (엄격)
+### LLM 합성
 
-- 모든 사실·통계·트렌드 문장 끝에 **`[N]`** (N = 기사 ref 번호)
-- 제공 데이터에 없는 내용 **생성·추론 금지**
-- 근거 없으면 **`N/A`**
+- domestic R&D 항목을 compact JSON으로 LLM에 전달 → `executive_summary`, `opportunities`, `action_plan` JSON
+- 모든 문장 **명사형 종결** (`-함`/`-었음`), `-습니다` 금지
+- 소스에 없는 수치·기관명 **추가 금지**
 
-### Metrics Dashboard 규칙
+### 레거시 Word TMR (선택)
 
-- `value`, `yoy`, `forecast`: 기사에 **명시된 수치만**. 없으면 `N/A` / `–` / `N/A`
-- `source`: 해당 수치를 **직접 언급한 기사의 출처명** 그대로 (Gartner/IDC 등 기사에 없으면 넣지 않음)
-- TRL, 특허 출원국, 시장점유율: 기사에 없으면 전부 N/A
-
-### sec1.key_findings — 반드시 4개
-
-| # | 유형 | 내용 |
-|---|------|------|
-| 1 | Market signal / 시장 신호 | 글로벌 시장·투자·수요 (모든 분야 포함) |
-| 2 | Competitive signal / 경쟁 신호 | 특정 기업 전략적 움직임 |
-| 3 | Korea-specific / 한국 특화 | 한국 시장·정책·기업 |
-| 4 | Risk signal / 리스크 | 공급망·규제·기술 병목 |
-
-### sec2.definition
-
-- 첫 문장에 **`technology_name` 필드의 기술명을 그대로** 사용
-- "이 기술은..." 같은 모호한 표현 금지
-
-### N/A 처리 (문서 빌더)
-
-구현: `src/report_generator.py` — `_is_na()`, `_has_real_data()`, `_has_real_text()`
-
-- 텍스트 필드 전체가 근거 없으면 `"N/A"` 한 단어 (문장 안에 N/A 넣지 않음)
-- `TRL X`, `X년` 같은 **템플릿 placeholder**는 `_is_na()`로 감지하여 **섹션 통째로 생략**
-- `_has_real_data()`, `_has_real_text()`로 **동적 섹션 번호** 부여 (빈 섹션은 번호 건너뜀)
-
-**`_is_na(val)` 동작:**
-- `str(val).strip()`이 아래이면 `True`: `n/a`, `–`, `-`, `""`, `na`, `n.a.`, `not available`, `unknown` (대소문자 무시)
-- 또는 `_PLACEHOLDER_RE` 정규식에 매칭되면 `True` (미채움 LLM placeholder):
-  - `TRL X` / `TRL ?` / `TRL 0`
-  - `X년`, `X years`, `X yr`
-  - `기술명`, `tech`, `technology`
-  - `driver N`, `barrier N`
-  - `X%`, `X billion`, `X million`, `X B`, `X M`
-  - `$X`, `€X`, `¥X`, `₩X` (B/M 접미 가능)
-
-**`_has_real_data(items, keys)` 동작:**
-- `items` 리스트에서 **어느 한 항목**이라도 `keys` 중 하나에 대해 `_is_na()`가 `False`이면 `True`
-- 모든 항목·모든 키가 비어 있거나 N/A/placeholder이면 `False` → 해당 표·하위 섹션 생략
-
-**`_has_real_text(text)` 동작:**
-- `_is_na(text)`의 반대. 비어 있지 않고 N/A·placeholder가 아니면 `True` → 단락·스냅샷 문단 포함
-
-### 표지 (한국어)
-
-| 필드 | 값 |
-|------|-----|
-| 제목 | 기술 시장 조사 보고서 |
-| 부제 | 프라운호퍼 연구소 \| 한국 사무소 |
-| 기술명 / 보고서 기간 / 작성자 / 버전 / 분류 | (JSON에서) |
-
-> **주의:** 예전 버전의 `부서 | 기술 인텔리전스 팀` 행은 **제거됨**. 표지에 부서 필드 넣지 않음.
+- `GENERATE_LEGACY_TMR=1`이면 `report_generator.py`로 영문 `tech-market-report-YYYY-MM.docx`도 생성
+- 기본 월간 파이프라인은 **Markdown R&D 보고서만** 생성
 
 ### 월간 실행 후 데일리 md 정리
 
@@ -729,9 +682,9 @@ Secrets: `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `MODEL_NAME`
 
 | 경로 | 내용 |
 |------|------|
-| `output/daily/daily_YYYY-MM-DD.md` | 데일리 리서치 로그 |
-| `reports/tech-market-report-YYYY-MM.docx` | 영문 월간 (`REPORTS_OUTPUT_DIR`) |
-| `reports/tech-market-report-YYYY-MM-ko.docx` | 한국어 월간 |
+| `output/daily/daily_YYYY-MM-DD.md` | 데일리 R&D 인텔리전스 로그 |
+| `reports/monthly_YYYY-MM.md` | 월간 국내 R&D 인텔리전스 Markdown |
+| `reports/tech-market-report-YYYY-MM.docx` | (선택) 영문 Word TMR — `GENERATE_LEGACY_TMR=1` |
 | `data/monitor.db` | SQLite (URL dedup, 수리·재생성용) |
 | `data/daily_scheduler_state.json` | catch-up 상태 |
 | `output/logs/daily.log` | `run_daily_catchup.bat` 실행 로그 |
@@ -768,7 +721,10 @@ python-project/
 ├── templates/
 │   └── daily_research_log_template.md
 ├── src/
-│   ├── main.py                   # CLI (daily, daily-catchup, daily-repair, daily-refresh, daily-reprocess, summarize-plan, monthly, schedule)
+│   ├── korea_scope.py            # 국내 기사 범위·해외 URL 제외
+│   ├── rd_monthly_report.py      # 월간 R&D Markdown 보고서
+│   ├── url_utils.py              # URL 정규화
+│   ├── main.py                   # CLI (daily, daily-catchup, daily-repair, daily-refresh, daily-reprocess, show-config, summarize-plan, monthly, schedule)
 │   ├── catchup.py                # 빠진 날짜 순차 실행 + repair 선행
 │   ├── daily_sync.py             # md/DB 불일치 수리·재처리·refresh
 │   ├── article_enrichment.py     # 정부 URL 본문·PDF 보강
@@ -793,6 +749,8 @@ python-project/
 │   └── fetchers/
 │       ├── registry.py
 │       ├── rss.py
+│       ├── korea_kr_archive.py   # korea.kr HTML 아카이브 (catch-up)
+│       ├── pacst.py              # PACST 게시판 (catch-up)
 │       └── base.py
 ├── keywords.txt
 ├── email_recipients.txt          # 이메일 수신자
@@ -803,6 +761,8 @@ python-project/
 ├── run_sync_from_github.bat      # git pull
 ├── run_monthly_check.bat         # monthly + git push
 ├── run_monthly_if_last_bizday.py
+├── sync_code_to_onedrive.ps1     # Documents → OneDrive 코드 동기화 (설정·output 유지)
+├── run_junction_after_close.bat  # Cursor 종료 후 OneDrive junction 설정
 ├── generate_sample_reports.py    # 샘플 데일리·월간 생성
 ├── rebuild_daily_markdown.py     # DB → md 재생성 (LLM 없음)
 ├── regen_daily_report.py         # DB 기사 재요약 → md 재생성
@@ -1018,4 +978,9 @@ templates/daily_research_log_template.md — 사람이 손으로 쓸 때만. 파
 | 2026-06-29~ | **본문·PDF 보강:** `article_enrichment.py`, `attachment_extractor.py` (`pypdf`) |
 | 2026-06-29~ | **R&D 타겟팅 요약:** Summarizer → 투자 주체/목적/니즈/접근 전략, `ko_one_liner` 5W1H |
 | 2026-06-29~ | **데일리 md:** 한국어 통합 요약 + R&D 타겟팅 블록 + 국내 R&D 시사점, `HH:MM` 제목 |
-| 2026-06-29~ | **CLI:** `summarize-plan`, `daily-refresh`; 장문 map-reduce `focused_summarize.py` |
+| 2026-06-29~ | **CLI:** `summarize-plan`, `daily-refresh`, `show-config`; 장문 map-reduce `focused_summarize.py` |
+| 2026-07-03 | **국내 전용(Korea-only):** `korea_scope.py` — 수집·필터·DB·월간 집계에서 해외 기사 제외 |
+| 2026-07-03 | **월간 보고서 전환:** Word TMR → **`reports/monthly_YYYY-MM.md`** R&D 인텔리gence (적합 4점+). 레거시 Word는 `GENERATE_LEGACY_TMR=1` |
+| 2026-07-03 | **수집 확대:** RSS 34개 + `korea.kr` 아카이브 + PACST; `sources.txt` 부처 RSS 추가 |
+| 2026-07-03 | **데일리 md:** R&D 인텔리전스 요약, **R&D 기회 스캔** 표, 적합도 1–5, 제안 R&D 영역·팩트 근거 |
+| 2026-07-03 | **daily-reprocess --fresh**, `sync_code_to_onedrive.ps1`, `run_junction_after_close.bat` |
