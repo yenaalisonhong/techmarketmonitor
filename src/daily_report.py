@@ -1403,7 +1403,7 @@ def _build_markdown(
         "",
         f"📊 **인포그래픽 대시보드 (권장):** [열기]({dashboard_url}) · [Markdown 상세 원문](daily_{iso}.md)",
         "",
-        f"> GitHub에서 `.html` 파일은 코드만 보입니다. 위 **열기** 링크(GitHub Pages)로 인포그래픽을 확인하세요.",
+        f"> GitHub에서 `.html` 파일은 코드만 보입니다. 위 **열기** 링크로 인포그래픽 대시보드를 확인하세요.",
         "",
         f"날짜: {iso}",
         f"기록자: {author}",
