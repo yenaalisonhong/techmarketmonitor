@@ -46,7 +46,7 @@ def _compact_entry(log: dict, ref: int, top_keywords: list[str]) -> dict:
         "title": log.get("title", ""),
         "url": log.get("url", ""),
         "source": log.get("source_name", ""),
-        "score": compute_rd_match_score(article, top_keywords),
+        "score": compute_rd_match_score(article, top_keywords, monthly=True),
         "relevance": keyword_relevance_label(relevance),
         "matched_keywords": ", ".join(article.matched_keywords[:5]),
         "actor": fields.get("investment_actor", ""),
@@ -73,7 +73,7 @@ def _synthesize_monthly_ko(
     )
     kw_label = " · ".join(top_keywords) if top_keywords else "(미설정)"
     prompt = f"""당신은 Fraunhofer 한국 사무소 R&D 전략가입니다.
-{year}년 {month}월 국내 R&D 인텔리gence 항목 {len(entries)}건(적합도 {MONTHLY_RD_MIN_SCORE}점 이상)을 바탕으로 **4~5페이지 분량**의 월간 보고서 JSON을 작성하세요.
+{year}년 {month}월 국내 R&D 인텔리전스 항목 {len(entries)}건(적합도 {MONTHLY_RD_MIN_SCORE}점 이상)을 바탕으로 **4~5페이지 분량**의 월간 보고서 JSON을 작성하세요.
 
 모니터링 컨텍스트 키워드(상위 3): {kw_label}
 - 각 항목의 relevance(직접/간접/약함), matched_keywords, keyword_relevance 필드를 기준으로 중요도를 판단함.
@@ -83,6 +83,7 @@ def _synthesize_monthly_ko(
 규칙:
 - 한국 국내 정부·기업 R&D 위탁·협력 기회만 다룸. 해외 시장·글로벌 벤더 분석 금지.
 - 모든 문장 명사형 종결(-함/-임/-었음). -습니다/-합니다 금지.
+- 한글 문장 안에 영어 단어를 섞지 말 것. 용어는 한글로 통일(예: 인텔리전스). Intelligence·인텔리gence 등 혼용 금지.
 - 소스에 없는 수치·기관명 추가 금지.
 - keyword_relevance, proposable, fact, actor/purpose/pain/strategy, relevance 필드를 적극 활용.
 - opportunities.summary는 분야별 서두 1~2문장(건수·[정부]·[컨텍스트] 라벨 금지).
@@ -456,7 +457,7 @@ def _build_executive_summary_fallback(
     themes = [label for label, _ in _group_by_theme(unique)]
 
     parts = [
-        f"{year}년 {month}월 국내 R&D 인텔리gence 월간 집계에서 R&D 적합 {MONTHLY_RD_MIN_SCORE}점 이상 "
+        f"{year}년 {month}월 국내 R&D 인텔리전스 월간 집계에서 R&D 적합 {MONTHLY_RD_MIN_SCORE}점 이상 "
         f"{len(unique)}건(원본 {len(entries)}건)이 분석됨.",
         f"{kw_label} 기준 직접 {len(direct)}건·간접 {len(indirect)}건·약함 {len(weak)}건으로 "
         "모니터링 컨텍스트 중요도를 구분함.",

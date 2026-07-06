@@ -168,15 +168,20 @@ def _fraunhofer_base_rd_score(article: SummarizedArticle) -> int:
 def compute_rd_match_score(
     article: SummarizedArticle,
     top_keywords: list[str] | None = None,
+    *,
+    monthly: bool = False,
 ) -> int:
     """Return R&D suitability 1–5: Fraunhofer cooperation + top-3 keyword relevance."""
     base = _fraunhofer_base_rd_score(article)
     if not top_keywords:
         return base
 
-    from src.daily_report import classify_keyword_relevance
+    if monthly:
+        relevance = classify_monthly_context_relevance(article, top_keywords)
+    else:
+        from src.daily_report import classify_keyword_relevance
 
-    relevance = classify_keyword_relevance(article, top_keywords)
+        relevance = classify_keyword_relevance(article, top_keywords)
     adjusted = base + _KEYWORD_RD_DELTA.get(relevance, -1)
     cap = _KEYWORD_RD_CAP.get(relevance, 3)
     return max(1, min(5, min(adjusted, cap)))
@@ -309,7 +314,7 @@ def monthly_context_priority(
     """Sort key: higher R&D score, tighter keyword fit, stronger gov/R&D signals first."""
     relevance = classify_monthly_context_relevance(article, top_keywords)
     return (
-        compute_rd_match_score(article, top_keywords),
+        compute_rd_match_score(article, top_keywords, monthly=True),
         -_RELEVANCE_RANK.get(relevance, 3),
         gov_target_score(article),
         investment_signal_score(article),
@@ -332,9 +337,16 @@ def prepare_logs_for_monthly_rd(
 
     for log in eligible:
         article = log_to_summarized_article(log)
-        score = compute_rd_match_score(article, top_keywords)
-        if score >= threshold:
-            rd_logs.append({**log, "rd_match_score": score})
+        base = _fraunhofer_base_rd_score(article)
+        if base >= threshold:
+            rd_logs.append(
+                {
+                    **log,
+                    "rd_match_score": compute_rd_match_score(
+                        article, top_keywords, monthly=True
+                    ),
+                }
+            )
         else:
             excluded += 1
 
