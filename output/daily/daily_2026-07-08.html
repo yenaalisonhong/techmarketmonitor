@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>국내 R&D 인텔리전스 · 2026-07-08</title>
+<style>
+:root {
+  --bg: #f1f5f9;
+  --surface: #ffffff;
+  --text: #0f172a;
+  --text-secondary: #475569;
+  --muted: #94a3b8;
+  --border: #e2e8f0;
+  --border-light: #f1f5f9;
+  --accent: #1e40af;
+  --accent-soft: #eff6ff;
+  --radius: 10px;
+  --font: "Pretendard", "Noto Sans KR", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--font); background: var(--bg); color: var(--text); line-height: 1.55; font-size: 14px; -webkit-font-smoothing: antialiased; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+.page { max-width: 1080px; margin: 0 auto; padding: 1.75rem 1.25rem 2.5rem; }
+
+/* ── Hero ── */
+.hero {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.5rem 1.75rem;
+  margin-bottom: 1.5rem;
+  border-left: 4px solid var(--accent);
+}
+.hero-top { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .5rem; margin-bottom: .75rem; }
+.hero h1 { font-size: 1.15rem; font-weight: 700; color: var(--text); letter-spacing: -.02em; }
+.hero .date-tag { font-size: .75rem; font-weight: 600; color: var(--muted); background: var(--bg); padding: .2rem .55rem; border-radius: 4px; }
+.hero .theme { font-size: 1.05rem; font-weight: 600; color: var(--accent); line-height: 1.45; margin-bottom: .5rem; }
+.hero .kw { font-size: .8rem; color: var(--text-secondary); }
+.hero .meta { display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 1rem; padding-top: .75rem; border-top: 1px solid var(--border-light); font-size: .78rem; color: var(--muted); }
+
+/* ── Core section ── */
+.core-section { margin-bottom: 1rem; }
+.core-section > h2 {
+  font-size: .72rem; font-weight: 700; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .06em; margin-bottom: .85rem;
+}
+.board { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.25rem; }
+.board-col-head {
+  font-size: .72rem; font-weight: 700; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .05em;
+  margin-bottom: .6rem; display: flex; justify-content: space-between; align-items: center;
+}
+.board-col-head .count {
+  font-size: .7rem; font-weight: 600; color: var(--text-secondary);
+  background: var(--bg); padding: .1rem .45rem; border-radius: 4px;
+}
+.board-col-head.high .count { color: var(--accent); background: var(--accent-soft); }
+
+/* ── Cards ── */
+.core-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  padding: .85rem 1rem; margin-bottom: .5rem;
+}
+.core-card.tier-high { border-left: 3px solid #1d4ed8; }
+.core-card.tier-mid { border-left: 3px solid #cbd5e1; }
+.core-card.tier-low { border-left: 3px solid var(--border); }
+
+.card-top { display: flex; gap: .6rem; align-items: flex-start; margin-bottom: .65rem; }
+.score-badge {
+  flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
+  width: 1.65rem; height: 1.65rem; border-radius: 6px;
+  font-size: .75rem; font-weight: 700; color: #fff;
+  background: var(--badge, var(--muted));
+}
+.score-badge.score-emphasis { width: 1.85rem; height: 1.85rem; font-size: .82rem; box-shadow: 0 0 0 3px var(--accent-soft); }
+.core-card h3 { font-size: .88rem; font-weight: 600; line-height: 1.4; color: var(--text); }
+.core-card h3 a { color: inherit; }
+.core-card h3 a:hover { color: var(--accent); text-decoration: none; }
+
+.www-grid { display: flex; flex-direction: column; gap: .35rem; }
+.www-row { display: grid; grid-template-columns: 3.2rem 1fr; gap: .5rem; font-size: .8rem; }
+.www-row dt { color: var(--muted); font-weight: 600; font-size: .72rem; padding-top: .1rem; }
+.www-row dd { color: var(--text-secondary); line-height: 1.4; }
+.www-highlight dd { color: var(--text); font-weight: 500; }
+
+.card-meta { font-size: .76rem; color: var(--muted); margin-top: .5rem; padding-top: .45rem; border-top: 1px solid var(--border-light); }
+.card-fact { font-size: .74rem; color: var(--muted); margin-top: .3rem; }
+
+.skip-note { font-size: .76rem; color: var(--muted); margin-top: 1rem; }
+.muted { color: var(--muted); }
+.footer {
+  margin-top: 2rem; padding-top: .85rem; border-top: 1px solid var(--border);
+  font-size: .65rem; color: var(--muted); line-height: 1.5;
+}
+.footer .stats { margin-bottom: .35rem; }
+
+@media (max-width: 480px) {
+  .hero { padding: 1.1rem; }
+}
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="hero">
+    <div class="hero-top">
+      <h1>국내 R&D 인텔리전스</h1>
+      <span class="date-tag">2026-07-08</span>
+    </div>
+    <p class="theme">국내 R&amp;D 수주 직접 연계 신호는 약하고 배경 모니터링 위주인 날</p>
+    <p class="kw">전력계통 · 스마트그리드 · 파워그리드</p>
+    <div class="meta">
+      <span>Tech Market Monitor (auto)</span>
+      <a href="https://github.com/yenaalisonhong/techmarketmonitor/blob/main/output/daily/daily_2026-07-08.md">상세 원문</a>
+      <a href="https://raw.githack.com/yenaalisonhong/techmarketmonitor/main/output/daily/index.html">날짜 목록</a>
+    </div>
+  </header>
+
+  <section class="core-section" id="core">
+    <h2>오늘의 R&D 핵심</h2>
+    <div class="board"><div class="board-col">
+  <div class="board-col-head low">참고 2점<span class="count">1</span></div>
+  <article class="core-card tier-low">
+  <div class="card-top">
+    <span class="score-badge" style="--badge:#94a3b8">2</span>
+    <h3><a href="https://www.yna.co.kr/view/AKR20260708030000008" target="_blank" rel="noopener">NH증권 &quot;LG엔솔, ESS 병목이 단기 실적 발목…목표가↓&quot;</a></h3>
+  </div>
+  <dl class="www-grid">
+    <div class="www-row"><dt>누가</dt><dd>NH투자증권</dd></div>
+    <div class="www-row"><dt>왜</dt><dd>NH증권은 LG에너지솔루션의 에너지저장장치(ESS) 병목이 단기 실적에 영향을 미칠 것으로 분석하고, 에너지저장장치(ESS) 기술 개발 및 스마트그리드 연계 연구를 제안함.</dd></div>
+    <div class="www-row www-highlight"><dt>무엇을</dt><dd>에너지저장장치(ESS) 기술 개발 및 스마트그리드 연계 연구</dd></div>
+  </dl>
+  <p class="card-meta">에너지저장장치(ESS) 기술 개발 및 스마트그리드 연계 연구를 통해 전력계통 안정성 향상을 도모할 수 있음</p>
+  <p class="card-fact">LG에너지솔루션의 에너지저장장치(ESS) 병목 현상</p>
+</article>
+</div></div>
+    <p class="skip-note">이하 1건은 R&D 적합 1점 또는 국내 투자 신호 미약으로 생략 · <a href="https://github.com/yenaalisonhong/techmarketmonitor/blob/main/output/daily/daily_2026-07-08.md">전체 항목은 Markdown 원문</a></p>
+  </section>
+
+  <footer class="footer">
+    <p class="stats">수집 2건(기사 2·논문 0) · R&amp;D 4점+ 0 · 핵심 1 · 신뢰도 A 1 / B 1 · 적합도 1점1 · 2점1 · 3점0 · 4점0 · 5점0 · 출처 연합뉴스 경제 1, 동아일보 경제 1 · 유형 기사 2</p>
+    <p>신뢰도 A: 정부·공공 원문·1차 통신·공공 R&D기관 · B: 국내 전문매체·기업 IR</p>
+  </footer>
+</div>
+</body>
+</html>
