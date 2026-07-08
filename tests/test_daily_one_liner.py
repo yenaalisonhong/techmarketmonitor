@@ -3,7 +3,12 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from src.daily_report import _extract_fact_sentence, _informative_score, _is_vague
+from src.daily_report import (
+    _extract_fact_sentence,
+    _informative_score,
+    _is_interpretive_sentence,
+    _is_vague,
+)
 from src.models import SummarizedArticle
 
 
@@ -59,3 +64,17 @@ def test_informative_score_ranks_quant_higher():
     vague = "Firmus는 인도네시아에서 첫 데이터센터를 건설하기 위해 Nvidia와 파트너십을 맺었음."
     rich = "Firmus Technologies는 Nvidia와 협력해 인도네시아에 데이터센터를 건설하며 2032년까지 $30억 수주를 유치할 전망임."
     assert _informative_score(rich) > _informative_score(vague)
+
+
+def test_interpretive_sentence_rejected_for_core_issue():
+    assert _is_interpretive_sentence("중소기업 지원 흐름과 연결되는 시장 신호로 보임.")
+    article = _article(
+        ko_one_liner="정부의 해상풍력 보급 목표와 연계, 한국서부발전의 석탄화력 발전소 폐쇄 계획과 활용함.",
+        ko_summary_steps=[
+            "**개요:** 기후에너지환경부와 한국서부발전은 2030년 준공 목표로 500MW 태안해상풍력을 추진함.",
+            "**접근 전략:** 정부의 해상풍력 보급 목표와 연계함.",
+        ],
+    )
+    fact = _extract_fact_sentence(article, ["전력계통"], "direct")
+    assert "500MW" in fact
+    assert "연계" not in fact

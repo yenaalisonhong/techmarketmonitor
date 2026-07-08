@@ -10,7 +10,6 @@ from pathlib import Path
 from src.models import SummarizedArticle
 from src.policy_priority import is_gov_target, gov_target_score
 from src.rd_targeting import (
-    build_daily_rd_insights,
     build_rd_targeting_block,
     compute_rd_match_score,
     format_rd_link_point,
@@ -662,6 +661,41 @@ def _relevance_trustworthy(
     return True
 
 
+_INTERPRETIVE_STEP_LABELS = (
+    "투자 주체",
+    "투자 목적",
+    "위탁 연구 니즈",
+    "접근 전략",
+    "제안 R&D",
+)
+_INTERPRETIVE_SENTENCE_RE = re.compile(
+    r"시장\s*신호"
+    r"|연계\s*가능"
+    r"|협력\s*가능"
+    r"|정부의\s+.+와\s+연계"
+    r"|로드맵\s*연계"
+    r"|정책\s*정합"
+    r"|접근\s*전략"
+    r"|제안\s*R&D"
+    r"|위탁\s*연구"
+    r"|것으로\s*보임"
+    r"|시사함|시사점"
+    r"|흐름과\s*연결"
+    r"|주목할\s*만",
+    re.IGNORECASE,
+)
+
+
+def _step_is_fact_source(raw: str) -> bool:
+    """True when a ko_summary_steps line is an overview fact, not R&D interpretation."""
+    return not any(label in raw for label in _INTERPRETIVE_STEP_LABELS)
+
+
+def _is_interpretive_sentence(sentence: str) -> bool:
+    """True when the sentence is analysis/proposal rather than a source fact."""
+    return bool(_INTERPRETIVE_SENTENCE_RE.search(sentence.strip()))
+
+
 def _extract_fact_sentence(
     article: SummarizedArticle,
     top_keywords: list[str],
@@ -671,23 +705,28 @@ def _extract_fact_sentence(
 
     Prefers LLM-generated ko_one_liner (5W1H-dense), then ko_summary_steps
     ranked by informativeness. Sentences must name their subject explicitly.
+    Interpretive R&D fields and analyst commentary are excluded.
     """
     if article.ko_one_liner:
         one_liner = polish_korean(
             strip_cjk_from_korean(re.sub(r"\[\d+\]\s*$", "", article.ko_one_liner).strip())
         )
-        if one_liner and not _is_vague(one_liner):
+        if one_liner and not _is_vague(one_liner) and not _is_interpretive_sentence(one_liner):
             return one_liner
 
     anchors = _title_anchor_tokens(article.title)
     ranked: list[tuple[tuple, str]] = []
 
     for idx, raw in enumerate(article.ko_summary_steps):
+        if not _step_is_fact_source(raw):
+            continue
         cleaned = polish_korean(strip_cjk_from_korean(_strip_heading(raw)))
         cleaned = re.sub(r"\[\d+\]\s*$", "", cleaned).strip()
         if not cleaned or cleaned.startswith("(해석)"):
             continue
         for sentence in _split_sentences(cleaned):
+            if _is_interpretive_sentence(sentence):
+                continue
             if _is_vague(sentence):
                 continue
             anchor_hits = sum(1 for a in anchors if a.lower() in sentence.lower())
@@ -1204,10 +1243,14 @@ def _build_executive_summary(
     top_keywords: list[str] | None = None,
     article_slugs: dict[str, str] | None = None,
 ) -> list[str]:
-    """Build R&D intelligence executive summary (Fraunhofer Korea)."""
+    """Build R&D intelligence executive summary (Fraunhofer Korea).
+
+    The summary block is fact-only: no interpretive themes, analyst commentary,
+    or Fraunhofer targeting bullets. Interpretation stays in per-item blocks.
+    """
     kws = top_keywords or []
     kw_header = " · ".join(kws[:3]) if kws else "(미설정)"
-    theme = _build_rd_daily_theme(articles, kws)
+    stats = _build_rd_daily_stats(articles, kws)
 
     sources = ", ".join(dict.fromkeys(a.source_name for a in articles[:3]))
     extra = f" 외 {len(articles) - 3}개 출처" if len(articles) > 3 else ""
@@ -1218,14 +1261,14 @@ def _build_executive_summary(
         "",
         f"**모니터링 키워드 (상위 3개):** {kw_header}",
         "",
-        f"**오늘의 공통 흐름:** {theme}",
+        f"**수집 현황:** {stats}",
         "",
         f"오늘 수집 {len(articles)}건 (R&D 적합 4점 이상 {high_score}건) · {sources}{extra}",
         "",
-        "**R&D 기회 스캔 (누가 · 왜 · 무엇을):**",
+        "**R&D 기회 스캔 (팩트 기반):**",
         "",
-        "| R&D적합 | 핵심 이슈 | 고객 타겟 | R&D 연계 포인트 | 팩트 체크 |",
-        "|---------|----------|----------|----------------|----------|",
+        "| R&D적합 | 핵심 이슈 (팩트) | 고객 타겟 | R&D 연계 포인트 | 팩트 체크 |",
+        "|---------|-----------------|----------|----------------|----------|",
     ]
 
     slugs = article_slugs or _build_item_slugs(articles)
@@ -1245,7 +1288,13 @@ def _build_executive_summary(
         if score < 2:
             continue
         fields = parse_rd_fields(article.ko_summary_steps)
-        issue = _extract_fact_sentence(article, kws, "direct") or article.ko_one_liner or article.title
+        issue = _extract_fact_sentence(article, kws, "direct")
+        if not issue:
+            basis = (article.rd_fact_basis or "").strip()
+            if basis and basis not in ("명시 없음", "") and not _is_interpretive_sentence(basis):
+                issue = _first_sentence(basis, hard_limit=200)
+        if not issue:
+            issue = article.title
         issue = issue.replace("|", "\\|")
         target = (fields.get("investment_actor") or "명시 없음").replace("|", "\\|")
         link_point = format_rd_link_point(
@@ -1268,7 +1317,6 @@ def _build_executive_summary(
             f"*(이하 {skipped}건은 R&D 적합 1점 또는 국내 투자 신호 미약으로 표에서 생략)*",
         ]
 
-    lines += build_daily_rd_insights(articles, kws)
     lines += [
         "- **상충되는 정보:** (해당 없음)",
         "",
@@ -1278,21 +1326,39 @@ def _build_executive_summary(
     return lines
 
 
-def _build_rd_daily_theme(
+def _build_rd_daily_stats(
     articles: list[SummarizedArticle],
     top_keywords: list[str] | None = None,
 ) -> str:
+    """Factual collection breakdown — no interpretive daily theme."""
     kws = top_keywords or []
     scores = [compute_rd_match_score(a, kws) for a in articles]
     high = sum(1 for s in scores if s >= 4)
     mid = sum(1 for s in scores if s == 3)
-    if high >= 2:
-        return "국내 정부·기업의 예산·R&D 프로그램 신호가 다수 포착된 날"
-    if high >= 1:
-        return "국내 R&D 위탁·협력 가능성이 있는 투자·정책 이슈가 부각된 날"
-    if mid >= 2:
-        return "국내 산업·정책 영향은 있으나 구체적 R&D 예산 신호는 제한적인 날"
-    return "국내 R&D 수주 직접 연계 신호는 약하고 배경 모니터링 위주인 날"
+    low = sum(1 for s in scores if s == 2)
+    one = sum(1 for s in scores if s == 1)
+
+    parts = [f"R&D 적합 4점+ {high}건", f"3점 {mid}건", f"2점 {low}건"]
+    if one:
+        parts.append(f"1점 {one}건")
+
+    actors: list[str] = []
+    for article in articles:
+        fields = parse_rd_fields(article.ko_summary_steps)
+        actor = (fields.get("investment_actor") or "").strip()
+        if actor and actor not in ("명시 없음", "해당 없음"):
+            actors.append(actor)
+    if actors:
+        unique = list(dict.fromkeys(actors))
+        shown = unique[:3]
+        suffix = " 등" if len(unique) > 3 else ""
+        parts.append(f"투자 주체 명시 {len(actors)}건 ({', '.join(shown)}{suffix})")
+
+    return " · ".join(parts)
+
+
+# Backward-compatible alias for HTML dashboard import.
+_build_rd_daily_theme = _build_rd_daily_stats
 
 
 def _build_item_block(
